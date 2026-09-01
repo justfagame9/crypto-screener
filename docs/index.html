@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Crypto Screener</title>
+<title>TradeSphere</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0b0e17">
 <style>
@@ -67,12 +67,20 @@
   .hamburger:active{transform:scale(.92);background:var(--panel2);}
   .hamburger svg{width:20px;height:20px;}
   .topbar-title{
-    font-size:15.5px;
-    font-weight:700;
-    letter-spacing:-.01em;
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-width:0;
+    min-height:0;
+  }
+  .topbar-logo{
+    height:calc(100% - 12px);
+    max-height:44px;
+    width:auto;
+    display:block;
+    object-fit:contain;
+    filter:drop-shadow(0 6px 14px rgba(114, 122, 255, 0.28));
   }
   .topbar-title .page-sub{
     color:var(--muted);
@@ -128,7 +136,15 @@
     font-size:17px;
     flex-shrink:0;
   }
-  .drawer-header .brand-name{font-size:16.5px;font-weight:800;letter-spacing:-.01em;}
+  .drawer-header .brand-name{
+    font-size:16.5px;
+    font-weight:800;
+    letter-spacing:-.01em;
+    background:linear-gradient(90deg, #ffffff 0%, #edfdf4 32%, #7fe4b6 58%, #2ac78a 100%);
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+  }
 
   .nav-item{
     display:flex;
@@ -242,7 +258,16 @@
       radial-gradient(circle at 0% 25%, rgba(53,224,192,.06), transparent 40%);
   }
   .home-header{padding:2px 2px 16px;position:relative;}
-  .home-greeting{font-size:20px;font-weight:800;letter-spacing:-.02em;color:var(--text);max-width:60%;}
+  .home-greeting{
+    font-size:20px;
+    font-weight:800;
+    letter-spacing:-.02em;
+    max-width:60%;
+    background:linear-gradient(90deg, #ffffff 0%, #edfdf4 32%, #7fe4b6 58%, #2ac78a 100%);
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+  }
   .home-subtext{font-size:12px;color:var(--muted);margin-top:3px;max-width:60%;}
 
   /* Small live-looking candlestick + trend chart filling the empty space
@@ -337,7 +362,9 @@
     <button class="hamburger" id="hamburgerBtn" aria-label="Menu">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
     </button>
-    <div class="topbar-title" id="topbarTitle">Crypto Screener</div>
+    <div class="topbar-title" id="topbarTitle">
+      <img class="topbar-logo" src="logo.svg" alt="Crypto Screener logo">
+    </div>
   </div>
 
   <div class="backdrop" id="backdrop"></div>
@@ -345,7 +372,7 @@
   <div class="drawer" id="drawer">
     <div class="drawer-header">
       <div class="brand-icon">⚡</div>
-      <div class="brand-name">Crypto Screener</div>
+      <div class="brand-name">TradeSphere</div>
     </div>
 
     <div class="nav-item" data-page="home">
@@ -406,7 +433,7 @@
     <div class="page active" data-page="home">
       <div class="home-wrap">
         <div class="home-header">
-          <div class="home-greeting">Crypto Screener</div>
+          <div class="home-greeting">TradeSphere</div>
           <div class="home-subtext">Choose a tool to get started</div>
           <svg class="header-chart" viewBox="0 0 132 76" aria-hidden="true">
             <defs>
@@ -579,7 +606,7 @@ function activatePage(pageId){
   currentPage = pageId;
   navItems.forEach(n => n.classList.toggle('active', n.dataset.page === pageId));
   pages.forEach(p => p.classList.toggle('active', p.dataset.page === pageId));
-  topbarTitle.textContent = 'Crypto Screener';
+  topbarTitle.innerHTML = '<img class="topbar-logo" src="logo.svg" alt="Crypto Screener logo">';
   const pageLabel = PAGE_TITLES[pageId];
   if(pageLabel){
     const sub = document.createElement('span');
