@@ -168,7 +168,7 @@ function getDisplayTimezone(){
 }
 const DISPLAY_TIMEZONE = getDisplayTimezone();
 
-footerNote.innerHTML = 'Times, Actual/Forecast/Previous values, and full event detail aren\'t shown here to keep this compact \u2014 check <a href="' + SOURCE_LINK + '" target="_blank" rel="noopener noreferrer">Crypto Craft</a> directly for exact release time and live data on any event.<br>Days are grouped using <strong>' + escapeHtml(DISPLAY_TIMEZONE) + '</strong> \u2014 change this in <a href="' + SETTINGS_PAGE + '">Trading Settings</a>.';
+footerNote.innerHTML = 'Times, Actual/Forecast/Previous values, and full event detail aren\'t shown here to keep this compact \u2014 check <a href="' + SOURCE_LINK + '" target="_blank" rel="noopener noreferrer">Crypto Craft</a> directly for exact release time and live data on any event.<br>Days are grouped using <strong>' + escapeHtml(DISPLAY_TIMEZONE) + '</strong> \u2014 change this in Settings.';
 
 function ymdInDisplayTz(date){
   const parts = new Intl.DateTimeFormat('en-CA', {timeZone: DISPLAY_TIMEZONE, year:'numeric', month:'2-digit', day:'2-digit'}).formatToParts(date);
