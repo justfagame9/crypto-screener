@@ -143,6 +143,12 @@
         </select>
       </div>
 
+      <div class="field">
+        <label for="displayTimezone">Display Timezone</label>
+        <select id="displayTimezone"></select>
+        <p class="hint" style="margin:8px 0 0;">Used to group and label dates in other apps that need it — e.g. the Calendar decides what counts as "today" based on this.</p>
+      </div>
+
       <div class="actions">
         <button class="secondary" type="button" id="resetBtn">Reset</button>
         <button class="primary" type="button" id="saveBtn">Save</button>
@@ -169,6 +175,11 @@
 <script>
   const STORAGE_KEY = 'crypto-screener-trading-settings';
   const PORTFOLIO_STORAGE_KEY = 'crypto-screener-portfolio-usdt';
+  // Shared across apps (e.g. calendar-sub.html reads this directly) so any
+  // app that needs to group or label things by day agrees on the same
+  // timezone, rather than each guessing from wherever it happens to run.
+  const TIMEZONE_STORAGE_KEY = 'crypto-screener-display-timezone';
+  const DEFAULT_TIMEZONE = 'Asia/Kolkata';
   const DEFAULT_PORTFOLIO = 1000;
   const EXCHANGE_LINKS = {
     CoinDCX: 'https://coindcx.com/futures/B-',
@@ -177,6 +188,7 @@
   };
   const portfolioValueInput = document.getElementById('portfolioValue');
   const tradingExchangeSelect = document.getElementById('tradingExchange');
+  const displayTimezoneSelect = document.getElementById('displayTimezone');
   const saveBtn = document.getElementById('saveBtn');
   const resetBtn = document.getElementById('resetBtn');
   const statusEl = document.getElementById('status');
@@ -186,35 +198,168 @@
     statusEl.className = 'status' + (type ? ` ${type}` : '');
   }
 
+  // A reasonably complete fallback list (every UTC offset, one representative
+  // city each, plus the other major regional zones) for browsers old enough
+  // not to support Intl.supportedValuesOf - which covers every current
+  // evergreen browser, so this path is rarely hit in practice.
+  const FALLBACK_TIMEZONES = [
+    'UTC','Pacific/Midway','Pacific/Honolulu','America/Anchorage','America/Los_Angeles',
+    'America/Tijuana','America/Denver','America/Phoenix','America/Chicago','America/Mexico_City',
+    'America/New_York','America/Toronto','America/Bogota','America/Lima','America/Caracas',
+    'America/Halifax','America/Santiago','America/Sao_Paulo','America/Argentina/Buenos_Aires',
+    'Atlantic/Azores','Europe/London','Europe/Dublin','Europe/Lisbon','Europe/Madrid',
+    'Europe/Paris','Europe/Berlin','Europe/Rome','Europe/Amsterdam','Europe/Brussels',
+    'Europe/Zurich','Europe/Vienna','Europe/Warsaw','Europe/Prague','Europe/Budapest',
+    'Europe/Athens','Europe/Bucharest','Europe/Helsinki','Europe/Kyiv','Europe/Istanbul',
+    'Europe/Moscow','Africa/Cairo','Africa/Johannesburg','Africa/Lagos','Africa/Nairobi',
+    'Asia/Jerusalem','Asia/Beirut','Asia/Dubai','Asia/Baghdad','Asia/Tehran',
+    'Asia/Karachi','Asia/Kolkata','Asia/Colombo','Asia/Kathmandu','Asia/Dhaka',
+    'Asia/Yangon','Asia/Bangkok','Asia/Jakarta','Asia/Ho_Chi_Minh','Asia/Shanghai',
+    'Asia/Hong_Kong','Asia/Singapore','Asia/Taipei','Asia/Manila','Asia/Kuala_Lumpur',
+    'Asia/Seoul','Asia/Tokyo','Australia/Perth','Australia/Adelaide','Australia/Darwin',
+    'Australia/Brisbane','Australia/Sydney','Australia/Melbourne','Pacific/Guam',
+    'Pacific/Noumea','Pacific/Auckland','Pacific/Fiji','Pacific/Chatham','Pacific/Tongatapu'
+  ];
+
+  // Some browsers/OSes ship an older ICU/CLDR build whose idea of the
+  // "canonical" IANA name hasn't caught up with later tzdata renames, so
+  // Intl.supportedValuesOf('timeZone') can still hand back a legacy name
+  // (e.g. "Asia/Calcutta") even though the IANA database itself renamed it
+  // to "Asia/Kolkata" back in 2005. Both names keep working identically as
+  // far as offsets/DST go (the old one is kept as a backward-compat link),
+  // so this doesn't change behavior - it just relabels/re-values anything
+  // outdated to the modern name before it reaches the dropdown or storage.
+  const TIMEZONE_RENAME_MAP = {
+    'Asia/Calcutta': 'Asia/Kolkata',
+    'Asia/Rangoon': 'Asia/Yangon',
+    'Asia/Saigon': 'Asia/Ho_Chi_Minh',
+    'Asia/Dacca': 'Asia/Dhaka',
+    'Asia/Ashkhabad': 'Asia/Ashgabat',
+    'Asia/Thimbu': 'Asia/Thimphu',
+    'Asia/Ulan_Bator': 'Asia/Ulaanbaatar',
+    'Asia/Katmandu': 'Asia/Kathmandu',
+    'Asia/Chungking': 'Asia/Shanghai',
+    'Asia/Macao': 'Asia/Macau',
+    'Asia/Tel_Aviv': 'Asia/Jerusalem',
+    'Europe/Kiev': 'Europe/Kyiv',
+    'Europe/Nicosia': 'Asia/Nicosia',
+    'Africa/Asmera': 'Africa/Asmara',
+    'Africa/Timbuktu': 'Africa/Bamako',
+    'America/Godthab': 'America/Nuuk',
+    'America/Montreal': 'America/Toronto',
+    'America/Shiprock': 'America/Denver',
+    'America/Indianapolis': 'America/Indiana/Indianapolis',
+    'America/Louisville': 'America/Kentucky/Louisville',
+    'America/Fort_Wayne': 'America/Indiana/Indianapolis',
+    'America/Knox_IN': 'America/Indiana/Knox',
+    'America/Buenos_Aires': 'America/Argentina/Buenos_Aires',
+    'America/Catamarca': 'America/Argentina/Catamarca',
+    'America/Cordoba': 'America/Argentina/Cordoba',
+    'America/Jujuy': 'America/Argentina/Jujuy',
+    'America/Mendoza': 'America/Argentina/Mendoza',
+    'Pacific/Truk': 'Pacific/Chuuk',
+    'Pacific/Yap': 'Pacific/Chuuk',
+    'Pacific/Ponape': 'Pacific/Pohnpei',
+    'Pacific/Enderbury': 'Pacific/Kanton',
+    'Pacific/Samoa': 'Pacific/Pago_Pago',
+    'Antarctica/South_Pole': 'Antarctica/McMurdo',
+    'US/Pacific': 'America/Los_Angeles',
+    'US/Eastern': 'America/New_York',
+    'US/Central': 'America/Chicago',
+    'US/Mountain': 'America/Denver'
+  };
+
+  function normalizeTimezone(tz){
+    return TIMEZONE_RENAME_MAP[tz] || tz;
+  }
+
+  function getAllTimezones(){
+    let zones;
+    try{
+      if(typeof Intl.supportedValuesOf === 'function'){
+        const values = Intl.supportedValuesOf('timeZone');
+        if(Array.isArray(values) && values.length) zones = values;
+      }
+    }catch(e){ /* fall through to the static list below */ }
+    if(!zones) zones = FALLBACK_TIMEZONES;
+    // Relabel any legacy names the browser handed back, then dedupe in case
+    // both the old and new name ended up in the list.
+    return Array.from(new Set(zones.map(normalizeTimezone)));
+  }
+
+  function isValidTimezone(tz){
+    try{ new Intl.DateTimeFormat(undefined, {timeZone: tz}); return true; }
+    catch(e){ return false; }
+  }
+
+  // Appends the current UTC offset so the dropdown is skimmable without
+  // having to already know what "Asia/Kolkata" means, e.g. "Asia/Kolkata (GMT+5:30)".
+  function formatTimezoneLabel(tz){
+    try{
+      const parts = new Intl.DateTimeFormat('en-US', {timeZone: tz, timeZoneName: 'shortOffset'}).formatToParts(new Date());
+      const offset = parts.find(p => p.type === 'timeZoneName');
+      return offset ? `${tz} (${offset.value.replace('GMT','UTC')})` : tz;
+    }catch(e){
+      return tz;
+    }
+  }
+
+  function populateTimezoneOptions(){
+    const zones = getAllTimezones().slice().sort();
+    displayTimezoneSelect.innerHTML = zones
+      .map(tz => `<option value="${tz}">${formatTimezoneLabel(tz)}</option>`)
+      .join('');
+  }
+
   function loadSettings(){
+    populateTimezoneOptions();
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if(!raw) {
         portfolioValueInput.value = String(DEFAULT_PORTFOLIO);
         tradingExchangeSelect.value = 'CoinDCX';
-        return;
-      }
-      const settings = JSON.parse(raw);
-      if(typeof settings.portfolioValue === 'number' && Number.isFinite(settings.portfolioValue) && settings.portfolioValue > 0){
-        portfolioValueInput.value = String(settings.portfolioValue);
       } else {
-        portfolioValueInput.value = String(DEFAULT_PORTFOLIO);
-      }
-      if(settings.tradingExchange && ['CoinDCX','Binance','Bybit'].includes(settings.tradingExchange)){
-        tradingExchangeSelect.value = settings.tradingExchange;
-      } else {
-        tradingExchangeSelect.value = 'CoinDCX';
+        const settings = JSON.parse(raw);
+        if(typeof settings.portfolioValue === 'number' && Number.isFinite(settings.portfolioValue) && settings.portfolioValue > 0){
+          portfolioValueInput.value = String(settings.portfolioValue);
+        } else {
+          portfolioValueInput.value = String(DEFAULT_PORTFOLIO);
+        }
+        if(settings.tradingExchange && ['CoinDCX','Binance','Bybit'].includes(settings.tradingExchange)){
+          tradingExchangeSelect.value = settings.tradingExchange;
+        } else {
+          tradingExchangeSelect.value = 'CoinDCX';
+        }
       }
     } catch (error) {
       portfolioValueInput.value = String(DEFAULT_PORTFOLIO);
       tradingExchangeSelect.value = 'CoinDCX';
       console.warn('Unable to load trading settings', error);
     }
+
+    // Timezone lives under its own key (see TIMEZONE_STORAGE_KEY) so other
+    // apps can read just this value without parsing the full settings blob.
+    try{
+      const savedTz = localStorage.getItem(TIMEZONE_STORAGE_KEY);
+      const normalizedTz = savedTz ? normalizeTimezone(savedTz) : null;
+      displayTimezoneSelect.value = (normalizedTz && isValidTimezone(normalizedTz)) ? normalizedTz : DEFAULT_TIMEZONE;
+      // If the stored value was an outdated name, write the normalized one
+      // straight back to localStorage so other apps reading this same key
+      // (e.g. calendar-sub.html) pick up the current name immediately,
+      // rather than waiting for the user to hit Save here.
+      if(savedTz && normalizedTz && normalizedTz !== savedTz && isValidTimezone(normalizedTz)){
+        localStorage.setItem(TIMEZONE_STORAGE_KEY, normalizedTz);
+      }
+    }catch(error){
+      displayTimezoneSelect.value = DEFAULT_TIMEZONE;
+      console.warn('Unable to load display timezone', error);
+    }
   }
 
   function saveSettings(){
     const portfolioValue = parseFloat(portfolioValueInput.value);
     const tradingExchange = tradingExchangeSelect.value;
+    const displayTimezone = displayTimezoneSelect.value;
 
     if(!Number.isFinite(portfolioValue) || portfolioValue <= 0){
       setStatus('Enter a valid portfolio value above 0.', 'error');
@@ -228,14 +373,17 @@
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     localStorage.setItem(PORTFOLIO_STORAGE_KEY, String(portfolioValue));
+    localStorage.setItem(TIMEZONE_STORAGE_KEY, displayTimezone);
     setStatus('Saved locally.', 'success');
   }
 
   function resetSettings(){
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(PORTFOLIO_STORAGE_KEY);
+    localStorage.removeItem(TIMEZONE_STORAGE_KEY);
     portfolioValueInput.value = String(DEFAULT_PORTFOLIO);
     tradingExchangeSelect.value = 'CoinDCX';
+    displayTimezoneSelect.value = DEFAULT_TIMEZONE;
     setStatus('Settings cleared.', 'success');
   }
 
