@@ -2297,6 +2297,18 @@ function downloadCSV(){
   a.download = `ichimoku_breakout_screener_${timeframe}_${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
 }
+
+// Lets other pages (e.g. watchlist.html's "Analysis" button) deep-link
+// straight into a coin's analysis via screener.html?symbol=BTCUSDT, without
+// needing a scan to have been run first - searchAndAnalyze() already screens
+// the symbol fresh on demand if it isn't in allResults yet.
+(function initFromQueryParams(){
+  const qp = new URLSearchParams(window.location.search);
+  const symbolParam = qp.get('symbol') || qp.get('analyze');
+  if(!symbolParam) return;
+  coinSearchInput.value = symbolParam.trim().toUpperCase();
+  searchAndAnalyze();
+})();
 </script>
 
 </body>
