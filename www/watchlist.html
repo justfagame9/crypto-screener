@@ -81,22 +81,30 @@
   /* ---- Watchlist rows ---- */
   .watch-list{display:flex;flex-direction:column;gap:10px;margin-bottom:14px;}
 
-  .watch-card{
-    background:var(--panel);border:1px solid var(--border);border-radius:14px;
-    padding:14px 16px;display:flex;flex-direction:column;gap:12px;
-    transition:border-color .15s, transform .15s;
+  .watch-item{position:relative;border-radius:14px;overflow:hidden;}
+
+  .watch-delete-bg{
+    position:absolute;inset:0;border-radius:14px;background:var(--red);
+    display:flex;align-items:center;justify-content:flex-start;
   }
-  .watch-card:hover{border-color:var(--border-soft);transform:translateY(-1px);}
-  .watch-card.error{gap:8px;}
+  .watch-delete-btn{
+    height:100%;padding:0 20px;background:transparent;border:none;color:#fff;
+    font:700 12px var(--font-mono);letter-spacing:.02em;cursor:pointer;
+    display:flex;align-items:center;gap:6px;white-space:nowrap;
+  }
+
+  .watch-card{
+    position:relative;z-index:1;
+    background:var(--panel);border:1px solid var(--border);border-radius:14px;
+    padding:14px 16px;display:flex;flex-direction:column;
+    transition:border-color .15s, transform .2s ease;
+    touch-action:pan-y;cursor:pointer;user-select:none;
+  }
+  .watch-card:hover{border-color:var(--border-soft);}
+  .watch-card.error{cursor:default;gap:8px;}
+  .watch-item.open .watch-card{border-color:rgba(255,84,112,.4);}
 
   .watch-top{display:flex;align-items:center;gap:11px;}
-  .watch-remove{
-    flex-shrink:0;width:24px;height:24px;padding:0;border-radius:7px;
-    background:var(--panel2);border:1px solid var(--border);color:var(--faint);
-    font:700 15px var(--font-mono);line-height:1;cursor:pointer;
-    display:flex;align-items:center;justify-content:center;
-  }
-  .watch-remove:hover{border-color:var(--red);color:var(--red);background:rgba(255,84,112,.08);}
   .watch-rank{
     flex-shrink:0;width:30px;height:22px;border-radius:7px;
     display:flex;align-items:center;justify-content:center;
@@ -125,6 +133,21 @@
   .watch-change{font:600 12px var(--font-mono);margin-top:1px;}
   .watch-change.up{color:var(--accent);}
   .watch-change.down{color:var(--red);}
+
+  .watch-chevron{
+    flex-shrink:0;width:16px;height:16px;margin-left:2px;color:var(--faint);
+    display:flex;align-items:center;justify-content:center;
+    transition:transform .2s ease,color .15s;
+  }
+  .watch-chevron svg{width:12px;height:12px;}
+  .watch-card.expanded .watch-chevron{transform:rotate(180deg);color:var(--muted);}
+
+  .watch-details{
+    max-height:0;opacity:0;overflow:hidden;
+    display:flex;flex-direction:column;gap:10px;
+    transition:max-height .22s ease,opacity .18s ease,margin-top .22s ease;
+  }
+  .watch-card.expanded .watch-details{max-height:160px;opacity:1;margin-top:12px;}
 
   .range-block{display:flex;flex-direction:column;gap:5px;}
   .range-title{font:10px var(--font-mono);color:var(--faint);text-transform:uppercase;letter-spacing:.06em;}
@@ -223,8 +246,8 @@
 // Add more coins here later - symbol is the clean display ticker (no USDT
 // suffix), binanceSymbol is the exact USDT-M perpetual contract on Binance
 // Futures, coingeckoId is CoinGecko's internal id (used only for market-cap
-// rank + logo, never for price). "pinned" coins don't get a remove ("-")
-// button - they're permanent defaults, not removable like custom/other coins.
+// rank + logo, never for price). Every coin (including the pinned defaults
+// below) can be removed via the swipe-to-delete gesture on its card.
 const DEFAULT_COINS = [
   { symbol: 'BTC', binanceSymbol: 'BTCUSDT', coingeckoId: 'bitcoin',  name: 'Bitcoin',  gradient: 'linear-gradient(135deg,#f7931a,#c9761a)', pinned: true },
   { symbol: 'ETH', binanceSymbol: 'ETHUSDT', coingeckoId: 'ethereum', name: 'Ethereum', gradient: 'linear-gradient(135deg,#8ea9ff,#5b6fd6)', pinned: true },
@@ -274,14 +297,12 @@ function rebuildCoinsList(){
 rebuildCoinsList();
 
 // Removes a coin from the watchlist immediately (both storage and the visible
-// list) regardless of whether it's one of the built-in defaults or one added
-// via screener.html's "+ WL" button, then re-renders right away so the row's
-// space is reclaimed by the rest of the list rather than left blank. Pinned
-// defaults (BTC/ETH) never expose a remove button in the UI, but this bails
-// out defensively too in case it's ever called some other way.
+// list) regardless of whether it's one of the built-in defaults (including
+// pinned BTC/ETH) or one added via screener.html's "+ WL" button, then
+// re-renders right away so the row's space is reclaimed by the rest of the
+// list rather than left blank.
 function removeCoin(binanceSymbol){
   const coin = DEFAULT_COINS.find(c => c.binanceSymbol === binanceSymbol);
-  if(coin && coin.pinned) return;
 
   const isDefault = !!coin;
   if(isDefault){
@@ -291,6 +312,8 @@ function removeCoin(binanceSymbol){
   }else{
     saveCustomCoins(loadCustomCoins().filter(c => c.binanceSymbol !== binanceSymbol));
   }
+  expandedCoins.delete(binanceSymbol);
+  openSwipeItem = null;
   rebuildCoinsList();
   renderAll();
 }
@@ -465,22 +488,39 @@ function rangeBar(low, high, current){
 // re-flashing every row on every tick.
 const lastRenderedPrice = {};
 
+// Tracks which coins are currently expanded (showing high/low, volume, and
+// chart link) - a plain in-memory Set keyed by binanceSymbol. renderAll()
+// rebuilds the whole list's innerHTML on every price refresh, so this state
+// has to live outside that render call to survive across refreshes; it just
+// resets to "all collapsed" on a full page reload, which is the desired
+// default (matches the compact #rank-line-only view).
+const expandedCoins = new Set();
+// Which .watch-item currently has its swipe-to-delete panel open (if any) -
+// used so opening a new one closes whichever was previously open.
+let openSwipeItem = null;
+
 function renderCoinRow(coin, ticker, rankInfo){
-  const removeBtn = coin.pinned ? '' : `<button class="watch-remove" type="button" aria-label="Remove ${coin.symbol} from watchlist" onclick="removeCoin('${coin.binanceSymbol}')">−</button>`;
+  const isExpanded = expandedCoins.has(coin.binanceSymbol);
+  const deleteBg = `
+    <div class="watch-delete-bg">
+      <button class="watch-delete-btn" type="button" aria-label="Delete ${coin.symbol} from watchlist" onclick="removeCoin('${coin.binanceSymbol}')">Delete</button>
+    </div>`;
 
   if(!ticker){
     return `
-      <div class="watch-card error">
-        <div class="watch-top">
-          <span class="watch-rank">—</span>
-          <span class="coin-icon-fallback" style="background:${coin.gradient}">${coin.symbol[0]}</span>
-          <div class="watch-id">
-            <div class="watch-symbol">${coin.symbol}</div>
-            <div class="watch-name">${escapeHtml(coin.name)}</div>
+      <div class="watch-item" data-symbol="${coin.binanceSymbol}">
+        ${deleteBg}
+        <div class="watch-card error" data-symbol="${coin.binanceSymbol}">
+          <div class="watch-top">
+            <span class="watch-rank">—</span>
+            <span class="coin-icon-fallback" style="background:${coin.gradient}">${coin.symbol[0]}</span>
+            <div class="watch-id">
+              <div class="watch-symbol">${coin.symbol}</div>
+              <div class="watch-name">${escapeHtml(coin.name)}</div>
+            </div>
           </div>
-          ${removeBtn}
+          <div class="watch-error-msg">Couldn't load ${coin.symbol} price this refresh.</div>
         </div>
-        <div class="watch-error-msg">Couldn't load ${coin.symbol} price this refresh.</div>
       </div>`;
   }
 
@@ -506,29 +546,34 @@ function renderCoinRow(coin, ticker, rankInfo){
     : `<span class="coin-icon-fallback" style="background:${coin.gradient}">${coin.symbol[0]}</span>`;
 
   return `
-    <div class="watch-card">
-      <div class="watch-top">
-        <span class="watch-rank ${isTopRank ? 'top' : ''}">${typeof rank === 'number' ? '#' + rank : '—'}</span>
-        ${icon}
-        <div class="watch-id">
-          <div class="watch-symbol">${coin.symbol}</div>
-          <div class="watch-name">${escapeHtml(coin.name)}</div>
+    <div class="watch-item" data-symbol="${coin.binanceSymbol}">
+      ${deleteBg}
+      <div class="watch-card ${isExpanded ? 'expanded' : ''}" data-symbol="${coin.binanceSymbol}">
+        <div class="watch-top">
+          <span class="watch-rank ${isTopRank ? 'top' : ''}">${typeof rank === 'number' ? '#' + rank : '—'}</span>
+          ${icon}
+          <div class="watch-id">
+            <div class="watch-symbol">${coin.symbol}</div>
+            <div class="watch-name">${escapeHtml(coin.name)}</div>
+          </div>
+          <div class="watch-price-block">
+            <div class="watch-price ${flashClass}">${formatPrice(price)}</div>
+            <div class="watch-change ${isUp ? 'up' : 'down'}">${isUp ? '▲' : '▼'} ${Math.abs(changePct).toFixed(2)}%</div>
+          </div>
+          <span class="watch-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
         </div>
-        <div class="watch-price-block">
-          <div class="watch-price ${flashClass}">${formatPrice(price)}</div>
-          <div class="watch-change ${isUp ? 'up' : 'down'}">${isUp ? '▲' : '▼'} ${Math.abs(changePct).toFixed(2)}%</div>
+
+        <div class="watch-details">
+          <div class="range-block">
+            <div class="range-title">24h range</div>
+            ${rangeBar(low, high, price)}
+          </div>
+
+          <div class="watch-foot">
+            <span class="watch-asof">${closeTime ? 'Vol ' + formatVolume(quoteVolume) : ''}</span>
+            <a class="watch-link" href="${tradingViewChartUrl(coin.binanceSymbol)}" rel="noopener" onclick="event.preventDefault(); event.stopPropagation(); openTradingViewChart('${coin.binanceSymbol}')">View chart ↗</a>
+          </div>
         </div>
-        ${removeBtn}
-      </div>
-
-      <div class="range-block">
-        <div class="range-title">24h range</div>
-        ${rangeBar(low, high, price)}
-      </div>
-
-      <div class="watch-foot">
-        <span class="watch-asof">${closeTime ? 'Vol ' + formatVolume(quoteVolume) : ''}</span>
-        <a class="watch-link" href="${tradingViewChartUrl(coin.binanceSymbol)}" rel="noopener" onclick="event.preventDefault(); openTradingViewChart('${coin.binanceSymbol}')">View chart ↗</a>
       </div>
     </div>`;
 }
@@ -574,6 +619,126 @@ function renderAll(){
 function renderSkeleton(){
   document.getElementById('content').innerHTML = `<div class="page-skeleton">${'<div class="skel-card"></div>'.repeat(COINS.length)}</div>`;
 }
+
+// ---------------- Card gestures: tap to expand/collapse, swipe left->right to reveal delete ----------------
+// Delegated on the #content container (rather than bound per-card) so it
+// keeps working across every renderAll() re-render without needing to be
+// re-attached each time.
+(function setupCardGestures(){
+  const content = document.getElementById('content');
+  const DRAG_THRESHOLD = 6;    // px of horizontal movement before it counts as a drag, not a tap
+  const OPEN_RATIO = 0.4;      // fraction of the delete panel's width needed to snap open on release
+
+  let dragItem = null;      // .watch-item currently being interacted with
+  let dragCard = null;      // its .watch-card
+  let startX = 0, startY = 0;
+  let currentX = 0;
+  let isDragging = false;   // confirmed horizontal drag (vs. tap or vertical scroll)
+  let axisLocked = null;    // 'x' | 'y' | null, decided once movement exceeds threshold
+  let maxReveal = 0;
+  let pointerId = null;
+
+  function closeItem(item){
+    if(!item) return;
+    const card = item.querySelector('.watch-card');
+    if(card) card.style.transform = '';
+    item.classList.remove('open');
+    if(openSwipeItem === item) openSwipeItem = null;
+  }
+
+  content.addEventListener('pointerdown', (e) => {
+    // Let real interactive elements (delete button, chart link) handle their own clicks.
+    if(e.target.closest('a, button')) return;
+
+    const card = e.target.closest('.watch-card');
+    if(!card) return;
+    const item = card.closest('.watch-item');
+    if(!item) return;
+
+    // Opening a new card's swipe panel closes whichever one was already open.
+    if(openSwipeItem && openSwipeItem !== item) closeItem(openSwipeItem);
+
+    dragItem = item;
+    dragCard = card;
+    startX = e.clientX;
+    startY = e.clientY;
+    currentX = item.classList.contains('open') ? maxRevealFor(item) : 0;
+    isDragging = false;
+    axisLocked = null;
+    maxReveal = maxRevealFor(item);
+    pointerId = e.pointerId;
+    dragCard.style.transition = 'none';
+  });
+
+  function maxRevealFor(item){
+    const bg = item.querySelector('.watch-delete-bg');
+    const btn = bg && bg.querySelector('.watch-delete-btn');
+    return btn ? btn.offsetWidth : 84;
+  }
+
+  content.addEventListener('pointermove', (e) => {
+    if(!dragCard || e.pointerId !== pointerId) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    if(axisLocked === null){
+      if(Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+      axisLocked = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+      if(axisLocked === 'x'){
+        isDragging = true;
+        try{ dragCard.setPointerCapture(pointerId); }catch(err){}
+      }
+    }
+    if(axisLocked !== 'x') return;
+
+    e.preventDefault();
+    const base = dragItem.classList.contains('open') ? maxReveal : 0;
+    let next = base + dx;
+    next = Math.max(0, Math.min(maxReveal, next));
+    dragCard.style.transform = `translateX(${next}px)`;
+  }, { passive: false });
+
+  function endDrag(e){
+    if(!dragCard) return;
+    dragCard.style.transition = '';
+
+    if(isDragging && axisLocked === 'x'){
+      const base = dragItem.classList.contains('open') ? maxReveal : 0;
+      const dx = (e.clientX !== undefined ? e.clientX : startX) - startX;
+      const finalX = Math.max(0, Math.min(maxReveal, base + dx));
+      if(finalX > maxReveal * OPEN_RATIO){
+        dragCard.style.transform = `translateX(${maxReveal}px)`;
+        dragItem.classList.add('open');
+        openSwipeItem = dragItem;
+      }else{
+        closeItem(dragItem);
+      }
+    }else{
+      // A tap (no meaningful drag): if this item's delete panel is open, a tap
+      // anywhere on the card just closes it again rather than toggling expand.
+      if(dragItem.classList.contains('open')){
+        closeItem(dragItem);
+      }else{
+        const symbol = dragCard.dataset.symbol;
+        if(symbol && !dragCard.classList.contains('error')){
+          const nowExpanded = !dragCard.classList.contains('expanded');
+          dragCard.classList.toggle('expanded', nowExpanded);
+          if(nowExpanded) expandedCoins.add(symbol); else expandedCoins.delete(symbol);
+        }
+      }
+    }
+
+    dragItem = null; dragCard = null; pointerId = null; axisLocked = null; isDragging = false;
+  }
+
+  content.addEventListener('pointerup', endDrag);
+  content.addEventListener('pointercancel', endDrag);
+
+  // Tapping anywhere outside the watchlist closes any open swipe panel.
+  document.addEventListener('pointerdown', (e) => {
+    if(openSwipeItem && !openSwipeItem.contains(e.target)) closeItem(openSwipeItem);
+  });
+})();
 
 function updateLastUpdatedLabel(failed){
   const el = document.getElementById('updatedLabel');
