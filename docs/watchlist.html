@@ -98,7 +98,7 @@
     background:var(--panel);border:1px solid var(--border);border-radius:14px;
     padding:14px 16px;display:flex;flex-direction:column;
     transition:border-color .15s, transform .2s ease;
-    touch-action:pan-y;cursor:pointer;user-select:none;
+    touch-action:pan-y;user-select:none;
   }
   .watch-card:hover{border-color:var(--border-soft);}
   .watch-card.error{cursor:default;gap:8px;}
@@ -135,10 +135,12 @@
   .watch-change.down{color:var(--red);}
 
   .watch-chevron{
-    flex-shrink:0;width:16px;height:16px;margin-left:2px;color:var(--faint);
+    flex-shrink:0;width:26px;height:26px;margin:-5px -6px -5px 2px;color:var(--faint);
     display:flex;align-items:center;justify-content:center;
-    transition:transform .2s ease,color .15s;
+    border-radius:7px;cursor:pointer;
+    transition:transform .2s ease,color .15s,background .15s;
   }
+  .watch-chevron:hover{color:var(--gold);background:var(--panel2);}
   .watch-chevron svg{width:12px;height:12px;}
   .watch-card.expanded .watch-chevron{transform:rotate(180deg);color:var(--muted);}
 
@@ -637,6 +639,7 @@ function renderSkeleton(){
   let axisLocked = null;    // 'x' | 'y' | null, decided once movement exceeds threshold
   let maxReveal = 0;
   let pointerId = null;
+  let dragOnChevron = false; // whether the pointerdown started on the expand/collapse chevron
 
   function closeItem(item){
     if(!item) return;
@@ -667,6 +670,7 @@ function renderSkeleton(){
     axisLocked = null;
     maxReveal = maxRevealFor(item);
     pointerId = e.pointerId;
+    dragOnChevron = !!e.target.closest('.watch-chevron');
     dragCard.style.transition = 'none';
   });
 
@@ -715,10 +719,12 @@ function renderSkeleton(){
       }
     }else{
       // A tap (no meaningful drag): if this item's delete panel is open, a tap
-      // anywhere on the card just closes it again rather than toggling expand.
+      // anywhere on the card closes it again. Otherwise, only a tap on the
+      // chevron toggles expand/collapse - tapping elsewhere on the card does
+      // nothing, so the row's own price/details aren't dismissed by accident.
       if(dragItem.classList.contains('open')){
         closeItem(dragItem);
-      }else{
+      }else if(dragOnChevron){
         const symbol = dragCard.dataset.symbol;
         if(symbol && !dragCard.classList.contains('error')){
           const nowExpanded = !dragCard.classList.contains('expanded');
@@ -728,7 +734,7 @@ function renderSkeleton(){
       }
     }
 
-    dragItem = null; dragCard = null; pointerId = null; axisLocked = null; isDragging = false;
+    dragItem = null; dragCard = null; pointerId = null; axisLocked = null; isDragging = false; dragOnChevron = false;
   }
 
   content.addEventListener('pointerup', endDrag);
