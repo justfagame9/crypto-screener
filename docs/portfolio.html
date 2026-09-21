@@ -209,11 +209,20 @@ a{color:inherit;}
 .perf-total{font-family:'Fraunces', serif; font-size:22px; font-weight:600; line-height:1;}
 .toggle-group-sm{margin-bottom:8px; border-radius:999px; padding:3px;}
 .toggle-group-sm button{padding:6px 4px; font-size:11.5px; border-radius:999px;}
-/* Bars-view period row in the expand modal mixes day ranges with financial
-   years, which can run to 9 buttons — too many for a single pill row, so it
-   wraps onto a second line with squared segments instead. */
-.expand-period-toggle{flex-wrap:wrap; row-gap:6px; border-radius:12px;}
-.expand-period-toggle button{flex:0 0 auto; border-radius:8px; padding:6px 10px;}
+/* Bars-view period picker in the expand modal is two stacked rows inside one
+   pill: rolling day ranges (7D-1Y) on top, every financial year underneath.
+   Each row is its own flex line so the buttons share the width evenly and
+   an FY label never has to wrap onto two lines. */
+.expand-period-toggle{flex-direction:column; gap:6px; border-radius:12px;}
+.expand-period-toggle .period-row{display:flex; gap:2px; width:100%;}
+.expand-period-toggle button{flex:1 1 0; min-width:0; white-space:nowrap; border-radius:8px; padding:6px 4px;}
+/* The FY row (FYs + "All time") sizes buttons by their label so the longer
+   "FY 2026-27" text is never squeezed; the Line tab's FY row does the same. */
+.expand-period-toggle .period-row:last-child button{flex:1 1 auto;}
+#perfExpandFY button{flex:1 1 auto; min-width:0; white-space:nowrap;}
+@media (max-width:380px){ .expand-period-toggle button, #perfExpandFY button{font-size:10.5px;} }
+/* Realized P&L total for whichever period/FY is selected in the expand modal */
+.perf-expand-summary{display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-top:14px;}
 .perf-meta{font-size:11.5px; color:var(--text-faint); margin-bottom:6px;}
 .perf-chart{width:100%; overflow:hidden;}
 .perf-chart svg{display:block;}
@@ -504,6 +513,96 @@ a{color:inherit;}
 .crypto-typo .leverage-value{font-family:'JetBrains Mono', monospace;}
 /* Close button of the Analysis / chart overlay (only opened from crypto holdings) */
 .analysis-overlay-close{font-family:'JetBrains Mono', monospace;}
+/* ---- Moon phase card (collapsible, sits just above the footer notice) ---- */
+.moon-card{
+  --moon-blue:#67A3FF; --moon-white:#F7F5FF; --moon-c:var(--moon-blue);
+  background:var(--panel); border:1px solid var(--border); border-radius:12px;
+  margin:22px 0 0; overflow:hidden;
+}
+.moon-card + .notice{margin-top:12px;}
+.moon-head{
+  width:100%; display:flex; align-items:center; gap:12px; padding:12px 16px;
+  background:none; border:0; color:inherit; font:inherit; text-align:left; cursor:pointer;
+}
+.moon-head:hover .moon-chevron{color:var(--moon-c);}
+.moon-head:focus-visible{outline:2px solid var(--moon-c); outline-offset:-2px;}
+.moon-icon{flex:0 0 auto; display:flex; width:38px; height:38px;}
+.moon-svg{display:block; flex:0 0 auto;}
+.moon-head-text{flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:1px;}
+.moon-eyebrow{font:600 10px var(--font-mono, 'IBM Plex Mono', monospace); letter-spacing:.14em; text-transform:uppercase; color:var(--text-faint, var(--faint));}
+.moon-name{font-size:15px; font-weight:700; line-height:1.25; color:var(--moon-c); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.moon-sub{font-size:11.5px; color:var(--text-dim, var(--muted)); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.moon-head-right{flex:0 0 auto; display:flex; align-items:center; gap:10px;}
+.moon-illum-wrap{display:flex; flex-direction:column; align-items:flex-end; line-height:1.15;}
+.moon-illum{font:600 15px var(--font-mono, 'IBM Plex Mono', monospace); color:var(--moon-c);}
+.moon-illum-lbl{font-size:10px; color:var(--text-faint, var(--faint));}
+.moon-chevron{color:var(--text-faint, var(--faint)); transition:transform .2s, color .15s; flex:0 0 auto;}
+.moon-card.open .moon-chevron{transform:rotate(180deg);}
+
+.moon-body{padding:2px 16px 16px; animation:moonReveal .25s ease;}
+.moon-body[hidden]{display:none;}
+.moon-body > .moon-name{margin:6px 0 8px;}
+@keyframes moonReveal{from{opacity:0; transform:translateY(-4px);} to{opacity:1; transform:none;}}
+
+/* cycle bar: blue first half (waxing), white second half (waning) */
+.moon-cycle{position:relative; margin:6px 4px 30px;}
+.moon-track{display:flex; height:6px; border-radius:6px; overflow:hidden;}
+.moon-track i{flex:1 1 50%; display:block;}
+.moon-track .wax{background:linear-gradient(90deg, rgba(103,163,255,.18), var(--moon-blue));}
+.moon-track .wan{background:linear-gradient(90deg, var(--moon-white), rgba(247,245,255,.18));}
+.moon-marker{
+  position:absolute; top:-4px; width:14px; height:14px; margin-left:-7px; border-radius:50%;
+  background:var(--moon-c); border:2px solid var(--panel); box-shadow:0 0 0 1px var(--moon-c), 0 0 10px var(--moon-c);
+}
+.moon-tick{position:absolute; top:14px; font:500 9.5px var(--font-mono, 'IBM Plex Mono', monospace); color:var(--text-faint, var(--faint)); white-space:nowrap; transform:translateX(-50%);}
+.moon-tick.first{transform:none;}
+.moon-tick.last{transform:translateX(-100%);}
+.moon-stats{font-size:12px; color:var(--text-dim, var(--muted)); margin:0 0 12px;}
+.moon-stats b{font-family:var(--font-mono, 'IBM Plex Mono', monospace); font-weight:600; color:var(--text);}
+.moon-stats + .moon-sec{margin-top:2px;}
+
+.moon-row{
+  display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:10px 12px; margin-bottom:8px;
+  background:var(--panel-2, var(--panel2)); border:1px solid var(--border); border-radius:10px;
+}
+.moon-row-main{flex:1 1 0; min-width:0;}
+.moon-row-k{font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;}
+.moon-row-v{font-size:14px; font-weight:600; color:var(--text);}
+.moon-row-side{text-align:right; flex:0 0 auto;}
+.moon-row-when{font:500 12px var(--font-mono, 'IBM Plex Mono', monospace); color:var(--text);}
+.moon-row-rel{font-size:11px; color:var(--text-faint, var(--faint)); margin-top:1px;}
+/* how this event looks on TradingView's Moon Phases indicator */
+.moon-row-tv{flex:0 0 100%; margin-top:-4px; padding-top:8px; border-top:1px solid var(--border-soft, var(--border)); font-size:11px; line-height:1.45; color:var(--text-dim, var(--muted));}
+.moon-row-tv i{display:inline-block; width:8px; height:8px; margin-right:6px; border-radius:50%; box-shadow:0 0 0 1px rgba(255,255,255,.18);}
+
+.moon-sec{font:600 10px var(--font-mono, 'IBM Plex Mono', monospace); letter-spacing:.14em; text-transform:uppercase; color:var(--text-faint, var(--faint)); margin:14px 0 6px;}
+.moon-up{display:flex; align-items:center; gap:10px; padding:7px 2px; border-top:1px solid var(--border-soft, var(--border)); font-size:12.5px;}
+.moon-up:first-of-type{border-top:0;}
+.moon-up-name{flex:1 1 auto; min-width:0; color:var(--text); font-weight:600; white-space:nowrap;}
+.moon-up-name small{display:block; margin-top:1px; font-size:10px; font-weight:500; line-height:1.3; color:var(--text-faint, var(--faint)); white-space:normal;}
+.moon-up-when{flex:0 0 auto; white-space:nowrap; font:500 11.5px var(--font-mono, 'IBM Plex Mono', monospace); color:var(--text-dim, var(--muted));}
+.moon-up-rel{flex:0 0 auto; white-space:nowrap; font-size:11px; color:var(--text-faint, var(--faint)); min-width:58px; text-align:right;}
+.moon-foot{margin:12px 0 0; font-size:10.5px; color:var(--text-faint, var(--faint)); line-height:1.5;}
+.moon-foot a{color:var(--moon-c); font-weight:600; text-decoration:none; white-space:nowrap;}
+.moon-foot a:hover{text-decoration:underline;}
+/* nested "About the TradingView indicator" toggle - collapsed by default, nothing persisted */
+.moon-info-toggle{
+  width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:14px; padding:10px 0 2px;
+  background:none; border:0; border-top:1px solid var(--border-soft, var(--border)); color:var(--text-dim, var(--muted));
+  font:inherit; font-size:11.5px; font-weight:600; text-align:left; cursor:pointer;
+}
+.moon-info-toggle:hover{color:var(--moon-c);}
+.moon-info-toggle:focus-visible{outline:2px solid var(--moon-c); outline-offset:2px;}
+.moon-info-toggle.open .moon-chevron{transform:rotate(180deg);}
+.moon-info{padding:8px 0 0; font-size:12px; line-height:1.55; color:var(--text-dim, var(--muted));}
+.moon-info[hidden]{display:none;}
+.moon-info p{margin:0 0 9px;}
+.moon-info p:last-child{margin-bottom:0;}
+.moon-info b{color:var(--text); font-weight:600;}
+@media (max-width:380px){
+  .moon-up-when{font-size:10.5px;}
+  .moon-row{padding:9px 10px; gap:10px;}
+}
 </style>
 </head>
 <body>
@@ -692,6 +791,46 @@ a{color:inherit;}
     </div>
   </section>
 
+  <div class="moon-card" id="moonCard" data-half="waxing">
+    <button class="moon-head" id="moonToggle" type="button" aria-expanded="false" aria-controls="moonBody" aria-label="Toggle moon phase details">
+      <span class="moon-icon" id="moonIcon"></span>
+      <span class="moon-head-text">
+        <span class="moon-eyebrow">Moon phase</span>
+        <span class="moon-sub" id="moonSub"></span>
+      </span>
+      <span class="moon-head-right">
+        <span class="moon-illum-wrap"><span class="moon-illum" id="moonIllum">&ndash;</span><span class="moon-illum-lbl">lit</span></span>
+        <svg class="moon-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+    </button>
+    <div class="moon-body" id="moonBody" hidden>
+      <div class="moon-name" id="moonName">&mdash;</div>
+      <div class="moon-cycle" aria-hidden="true">
+        <div class="moon-track"><i class="wax"></i><i class="wan"></i></div>
+        <span class="moon-marker" id="moonMarker"></span>
+        <span class="moon-tick first" style="left:0">New</span>
+        <span class="moon-tick" style="left:50%">Full</span>
+        <span class="moon-tick last" style="left:100%">New</span>
+      </div>
+      <p class="moon-stats" id="moonStats"></p>
+      <div class="moon-sec">On the TradingView chart</div>
+      <div id="moonRows"></div>
+      <div class="moon-sec">Next phases</div>
+      <div id="moonUpcoming"></div>
+      <button class="moon-info-toggle" id="moonInfoToggle" type="button" aria-expanded="false" aria-controls="moonInfo">
+        <span>About the TradingView indicator</span>
+        <svg class="moon-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="moon-info" id="moonInfo" hidden>
+        <p><b>What it shows.</b> TradingView&rsquo;s <i>Moon Phases</i> indicator plots each new moon as a circle above the bar (the &ldquo;dark&rdquo; one) and each full moon as a circle below it (the &ldquo;bright&rdquo; one). Bars in between are shaded blue while the moon is waxing (new &rarr; full) and white while it is waning (full &rarr; new).</p>
+        <p><b>Why traders watch it.</b> Some traders believe lunar cycles nudge markets through subtle gravitational effects on Earth and on market participants. That is a belief, not a proven edge &mdash; treat it as background context next to your other signals, not a signal on its own.</p>
+        <p><b>Match your chart.</b> In TradingView, add <i>Moon Phases</i> from Indicators. Inputs sets the Waxing Moon and Waning Moon colours (blue and white here); Style switches the New Moon and Full Moon circles and the Background Color on or off. It isn&rsquo;t supported on the Monthly timeframe.</p>
+        <p><b>Reading the timing.</b> The circle sits on the bar that contains the exact moment. Crypto trades 24/7, so on a daily chart that is the UTC candle (00:00&ndash;24:00 UTC), which can be a different date from your local time above. On stocks it lands on the next available bar. TradingView&rsquo;s script uses a simplified formula, so a phase that falls right on a candle boundary could land one candle over compared with this card.</p>
+      </div>
+      <p class="moon-foot">Blue = waxing (new &rarr; full), white = waning (full &rarr; new), as on TradingView&rsquo;s Moon Phases indicator. Times are calculated on this device and shown in your local time. <a href="https://www.tradingview.com/support/solutions/43000599884-moon-phases/" rel="noopener" id="moonHelpLink">TradingView help &#8599;</a></p>
+    </div>
+  </div>
+
   <div class="notice">
     <div class="notice-summary">
       <b>Everything here is stored only on this device.</b>
@@ -803,6 +942,13 @@ a{color:inherit;}
     </div>
     <div class="toggle-group toggle-group-sm expand-period-toggle" id="perfExpandBarsPeriod" style="margin-top:8px; display:none"></div>
     <div class="toggle-group toggle-group-sm" id="perfExpandFY" style="margin-top:8px; display:none"></div>
+    <div class="perf-expand-summary">
+      <div>
+        <p class="card-label" style="margin:0">Realized P&amp;L</p>
+        <div class="perf-meta" id="perfExpandPeriodLabel" style="margin:2px 0 0">—</div>
+      </div>
+      <div class="perf-total" id="perfExpandTotal">$0</div>
+    </div>
     <div class="perf-meta" id="perfExpandMeta" style="margin-top:8px">—</div>
     <div class="expand-chart-area" id="perfExpandChartArea"></div>
   </div>
@@ -1332,6 +1478,24 @@ function buildFYBuckets(fyStartYear){
   return out;
 }
 
+// Calendar-month buckets from the month of the very first closed trade
+// through the current month, used by the bars view's "All time" option.
+function buildAllTimeBuckets(){
+  const rows = collectRealized();
+  if(!rows.length) return [];
+  let first = Infinity, last = -Infinity;
+  rows.forEach(r=>{ if(r.date < first) first = r.date; if(r.date > last) last = r.date; });
+  const fd = new Date(first);
+  const ld = new Date(Math.max(Date.now(), last));
+  let y = fd.getFullYear(), m = fd.getMonth();
+  const out = [];
+  while(y < ld.getFullYear() || (y === ld.getFullYear() && m <= ld.getMonth())){
+    out.push({ from: new Date(y, m, 1).getTime(), to: new Date(y, m + 1, 1).getTime(), pnl:0, trades:0 });
+    m++; if(m > 11){ m = 0; y++; }
+  }
+  return out;
+}
+
 // Round a raw axis interval up to a 1/2/2.5/5/10 x 10^n step so gridline
 // labels land on readable numbers instead of things like 137.42.
 function niceStep(range){
@@ -1574,8 +1738,8 @@ function wirePerfHover(host, buckets, y, prefix, geo){
    current FY until older data exists.
    =========================================================================== */
 let perfExpandStyle = 'bars'; // 'bars' | 'line'
-let perfExpandFYStart = null; // set when the modal opens — drives the "Line" FY picker
-let perfExpandBarsPeriod = 7; // number of days, or 'fy:<startYear>' — drives the "Bars" period picker
+let perfExpandFYStart = null; // FY start year, or 'all' — set when the modal opens, drives the "Line" FY picker
+let perfExpandBarsPeriod = 7; // number of days, 'fy:<startYear>' or 'all' — drives the "Bars" period picker
 
 // April (month index 3) starts the Indian financial year: dates in Jan-Mar
 // belong to the FY that began the previous April.
@@ -1660,10 +1824,12 @@ function renderPerfExpand(){
   if(perfExpandStyle === 'line'){
     barsRow.style.display = 'none';
     const years = availableFYStartYears();
-    if(!years.includes(perfExpandFYStart)) perfExpandFYStart = years[0];
+    if(perfExpandFYStart !== 'all' && !years.includes(perfExpandFYStart)) perfExpandFYStart = years[0];
     fyRow.style.display = 'flex';
-    fyRow.innerHTML = years.map(y=>`<button type="button" data-fy="${y}" class="${y === perfExpandFYStart ? 'active' : ''}">${fyLabel(y)}</button>`).join('');
-    drawFYLineChart(perfExpandFYStart, meta, area);
+    fyRow.innerHTML = years.map(y=>`<button type="button" data-fy="${y}" class="${y === perfExpandFYStart ? 'active' : ''}">${fyLabel(y)}</button>`).join('')
+      + `<button type="button" data-fy="all" class="${perfExpandFYStart === 'all' ? 'active' : ''}">All time</button>`;
+    const fyTotal = drawFYLineChart(perfExpandFYStart, meta, area);
+    setPerfExpandSummary(fyTotal, perfExpandFYStart === 'all' ? 'All time' : fyLabel(perfExpandFYStart), prefix);
   }else{
     fyRow.style.display = 'none';
     barsRow.style.display = 'flex';
@@ -1676,10 +1842,16 @@ function renderPerfExpand(){
 
     const dayOpts = [7, 30, 60, 90, 180, 360];
     const dayOptLabels = { 7:'7D', 30:'30D', 60:'2M', 90:'3M', 180:'6M', 360:'1Y' };
-    barsRow.innerHTML = dayOpts.map(d=>`<button type="button" data-days="${d}" class="${perfExpandBarsPeriod === d ? 'active' : ''}">${dayOptLabels[d]}</button>`).join('')
-      + fyYears.map(y=>`<button type="button" data-fy="${y}" class="${perfExpandBarsPeriod === ('fy:'+y) ? 'active' : ''}">${fyLabel(y)}</button>`).join('');
+    const dayOptFull = { 7:'Last 7 days', 30:'Last 30 days', 60:'Last 2 months', 90:'Last 3 months', 180:'Last 6 months', 360:'Last 1 year' };
+    // Two stacked rows: day ranges on top, every financial year below.
+    barsRow.innerHTML = '<div class="period-row">'
+      + dayOpts.map(d=>`<button type="button" data-days="${d}" class="${perfExpandBarsPeriod === d ? 'active' : ''}">${dayOptLabels[d]}</button>`).join('')
+      + '</div><div class="period-row">'
+      + fyYears.map(y=>`<button type="button" data-fy="${y}" class="${perfExpandBarsPeriod === ('fy:'+y) ? 'active' : ''}">${fyLabel(y)}</button>`).join('')
+      + `<button type="button" data-fy="all" class="${perfExpandBarsPeriod === 'all' ? 'active' : ''}">All time</button>`
+      + '</div>';
 
-    let buckets, trades = 0, withYear, showBarLabels;
+    let buckets, trades = 0, total = 0, withYear, showBarLabels, periodLabel;
 
     if(typeof perfExpandBarsPeriod === 'number'){
       const step = perfBucketDays(perfExpandBarsPeriod);
@@ -1691,21 +1863,37 @@ function renderPerfExpand(){
         buckets[idx].pnl += r.pnl;
         buckets[idx].trades++;
         trades++;
+        total += r.pnl;
       });
+      periodLabel = dayOptFull[perfExpandBarsPeriod];
       withYear = perfExpandBarsPeriod >= 180;
       showBarLabels = perfExpandBarsPeriod === 7;
       const grain = step === 1 ? 'daily' : step === 7 ? 'weekly' : '30-day';
       meta.textContent = trades === 0
         ? `No trades closed in the last ${perfExpandBarsPeriod} days`
         : `${trades} closed trade${trades===1?'':'s'} · ${shortDate(from, withYear)} – ${shortDate(buckets[buckets.length-1].to - DAY_MS, withYear)} · ${grain} bars`;
+    }else if(perfExpandBarsPeriod === 'all'){
+      // Every closed trade ever, one bar per calendar month.
+      periodLabel = 'All time';
+      buckets = buildAllTimeBuckets();
+      withYear = true;
+      showBarLabels = false;
+      collectRealized().forEach(r=>{
+        const b = buckets.find(bk => r.date >= bk.from && r.date < bk.to);
+        if(b){ b.pnl += r.pnl; b.trades++; trades++; total += r.pnl; }
+      });
+      meta.textContent = trades === 0
+        ? 'No closed trades yet'
+        : `${trades} closed trade${trades===1?'':'s'} · ${shortDate(buckets[0].from, true)} – ${shortDate(Math.min(Date.now(), buckets[buckets.length-1].to) - DAY_MS, true)} · All time · monthly bars`;
     }else{
       const fyYear = Number(perfExpandBarsPeriod.slice(3));
+      periodLabel = fyLabel(fyYear);
       buckets = buildFYBuckets(fyYear);
       withYear = true;
       showBarLabels = false;
       buckets.forEach(b=>{
         collectRealized().forEach(r=>{
-          if(r.date >= b.from && r.date < b.to){ b.pnl += r.pnl; b.trades++; trades++; }
+          if(r.date >= b.from && r.date < b.to){ b.pnl += r.pnl; b.trades++; trades++; total += r.pnl; }
         });
       });
       meta.textContent = buckets.length === 0
@@ -1720,7 +1908,20 @@ function renderPerfExpand(){
     }else{
       drawPerfChart(buckets, trades, prefix, area, { showBarLabels, withYear });
     }
+    setPerfExpandSummary(total, periodLabel, prefix);
   }
+}
+
+// Realized P&L total for the period / financial year currently shown in the
+// expand modal — same figure the main card shows for its own range, coloured
+// by sign. The Bars tab passes the sum of every closed trade in the window;
+// the Line tab passes the cumulative value at the right-hand end of the line.
+function setPerfExpandSummary(total, label, prefix){
+  if(Math.abs(total) < 0.005) total = 0;
+  const totalEl = document.getElementById('perfExpandTotal');
+  totalEl.textContent = (total > 0 ? '+' : '') + fmtMoney(total, prefix);
+  totalEl.className = 'perf-total ' + pnlClass(total);
+  document.getElementById('perfExpandPeriodLabel').textContent = label || '—';
 }
 
 // Cumulative realized P&L across one financial year, starting the line at
@@ -1728,25 +1929,46 @@ function renderPerfExpand(){
 // 1 Apr through today for the current (unfinished) FY, the full year for a
 // completed one — so the line always reaches the right edge with no blank
 // run of future days.
+//
+// Pass fyStartYear = 'all' for the all-time view: ONE continuous cumulative
+// line from the first closed trade to today. It does not reset at 1 April —
+// the value where one financial year ends is exactly where the next one
+// begins — and each 1 April is marked with a dashed divider, a dot on the
+// line, and an FY label so the year boundaries are still visible.
 function drawFYLineChart(fyStartYear, metaEl, areaEl){
   const prefix = state.settings.displayCurrency === 'INR' ? '₹' : '$';
-  const { start, end } = fyBounds(fyStartYear);
+  const isAll = fyStartYear === 'all';
   const now = Date.now();
-  const domainEnd = Math.min(now, end);
+  let start, end, domainEnd, rows;
 
-  if(domainEnd <= start){
-    metaEl.textContent = `${fyLabel(fyStartYear)} hasn't started yet.`;
-    areaEl.innerHTML = '';
-    return;
+  if(isAll){
+    const every = collectRealized().sort((a,b)=>a.date-b.date);
+    if(every.length === 0){
+      metaEl.textContent = 'No closed trades yet.';
+      areaEl.innerHTML = `<div class="perf-empty">Close a trade and the booked P&amp;L will plot here.</div>`;
+      return 0;
+    }
+    const d0 = new Date(every[0].date); d0.setHours(0,0,0,0);
+    start = d0.getTime();
+    domainEnd = Math.max(now, every[every.length - 1].date + 1);
+    end = domainEnd;
+    rows = every;
+  }else{
+    ({ start, end } = fyBounds(fyStartYear));
+    domainEnd = Math.min(now, end);
+    if(domainEnd <= start){
+      metaEl.textContent = `${fyLabel(fyStartYear)} hasn't started yet.`;
+      areaEl.innerHTML = '';
+      return 0;
+    }
+    rows = collectRealized().filter(r => r.date >= start && r.date < domainEnd).sort((a,b)=>a.date-b.date);
   }
-
-  const rows = collectRealized().filter(r => r.date >= start && r.date < domainEnd).sort((a,b)=>a.date-b.date);
   let cum = 0;
   const points = [{ date:start, pnl:0 }];
   rows.forEach(r=>{ cum += r.pnl; points.push({ date:r.date, pnl:cum }); });
   points.push({ date:domainEnd, pnl:cum });
 
-  metaEl.textContent = `${rows.length} closed trade${rows.length===1?'':'s'} · ${shortDate(start,true)} – ${shortDate(domainEnd,true)} · ${fyLabel(fyStartYear)}`;
+  metaEl.textContent = `${rows.length} closed trade${rows.length===1?'':'s'} · ${shortDate(start,true)} – ${shortDate(domainEnd,true)} · ${isAll ? 'All time' : fyLabel(fyStartYear)}`;
 
   const w = Math.max(280, Math.floor(areaEl.clientWidth || 320));
   const h = 260;
@@ -1778,10 +2000,42 @@ function drawFYLineChart(fyStartYear, metaEl, areaEl){
   const dotColor = last.pnl >= 0 ? '#4ED8B0' : '#F2697A';
   const dot = `<circle cx="${x(last.date).toFixed(1)}" cy="${y(last.pnl).toFixed(1)}" r="3.5" fill="${dotColor}"/>`;
 
+  // All-time only: mark every financial-year boundary (1 April) that falls
+  // inside the plotted range. The line itself carries straight through.
+  let fyMarks = '', fyDots = '', fyLabels = '';
+  if(isAll){
+    const valAt = t => {
+      for(let i = 1; i < points.length; i++){
+        if(t <= points[i].date){
+          const p0 = points[i-1], p1 = points[i];
+          const f = p1.date === p0.date ? 0 : (t - p0.date)/(p1.date - p0.date);
+          return p0.pnl + (p1.pnl - p0.pnl)*f;
+        }
+      }
+      return points[points.length-1].pnl;
+    };
+    const edges = [start];
+    for(let fy = fyStartYearForDate(new Date(start)) + 1; fyBounds(fy).start < domainEnd; fy++) edges.push(fyBounds(fy).start);
+    edges.push(domainEnd);
+    for(let i = 0; i < edges.length - 1; i++){
+      const segStart = edges[i], segEnd = edges[i+1];
+      if(i > 0){
+        const bx = x(segStart).toFixed(1);
+        fyMarks += `<line x1="${bx}" y1="${padT}" x2="${bx}" y2="${padT + plotH}" stroke="#4A4568" stroke-width="1" stroke-dasharray="3,3"/>`;
+        fyDots  += `<circle cx="${bx}" cy="${y(valAt(segStart)).toFixed(1)}" r="3" fill="#171325" stroke="var(--gold)" stroke-width="1.5"/>`;
+      }
+      const fy = fyStartYearForDate(new Date(segStart));
+      const segW = x(segEnd) - x(segStart);
+      const short = `${String(fy % 100).padStart(2,'0')}-${String((fy + 1) % 100).padStart(2,'0')}`;
+      const txt = segW >= 68 ? fyLabel(fy) : (segW >= 36 ? short : '');
+      if(txt) fyLabels += `<text x="${((x(segStart) + x(segEnd))/2).toFixed(1)}" y="${padT + 11}" text-anchor="middle" class="pc-axis" opacity=".75">${txt}</text>`;
+    }
+  }
+
   // Right label reads the last real day in the domain: 31 Mar once the FY is
   // complete (domainEnd lands on the exclusive 1 Apr boundary), otherwise
   // today's date.
-  const rightLabelTs = Math.min(domainEnd, end - DAY_MS);
+  const rightLabelTs = isAll ? domainEnd : Math.min(domainEnd, end - DAY_MS);
   const xLabels = `<text x="${padL}" y="${h-7}" class="pc-axis">${shortDate(start, true)}</text>`
                 + `<text x="${w-padR}" y="${h-7}" text-anchor="end" class="pc-axis">${shortDate(rightLabelTs, true)}</text>`;
 
@@ -1799,16 +2053,20 @@ function drawFYLineChart(fyStartYear, metaEl, areaEl){
     </g>`;
   const captureRect = `<rect id="fyHoverCapture" x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" fill="transparent"/>`;
 
-  areaEl.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="Cumulative realized profit and loss across the financial year" style="touch-action:pan-y">
+  areaEl.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${isAll ? 'Cumulative realized profit and loss, all time' : 'Cumulative realized profit and loss across the financial year'}" style="touch-action:pan-y">
     ${grid}
+    ${fyMarks}
     <path d="${pathD}" fill="none" stroke="var(--gold)" stroke-width="2" stroke-linejoin="round"/>
+    ${fyDots}
     ${dot}
+    ${fyLabels}
     ${xLabels}
     ${hoverLayer}
     ${captureRect}
   </svg>`;
 
   wireFYHover(areaEl, points, y, prefix, { padL, padT, plotW, plotH, svgW: w });
+  return cum;   // cumulative realized P&L at the end of the plotted range
 }
 
 // Tracks pointer/touch position over the FY line chart's capture rect,
@@ -2420,9 +2678,9 @@ function openEditLotPrompt(market, id){
 
   document.getElementById('editLotModalTitle').textContent = `Edit order — ${h.symbol.replace('USDT','')}`;
   document.getElementById('editLotModalBody').innerHTML = `
-    <div class="field"><label>Quantity</label><input type="number" class="input mono" id="elQty" inputmode="decimal" value="${lot.qty}"></div>
-    <div class="field"><label>Price (${prefix})</label><input type="number" class="input mono" id="elPrice" inputmode="decimal" value="${lot.price}"></div>
     <div class="field"><label>Position size (${prefix}) <span style="font-weight:400;color:var(--text-faint)">— editing this adjusts quantity, price stays fixed</span></label><input type="number" class="input mono" id="elPosSize" inputmode="decimal" value="${(lot.qty*lot.price).toFixed(2)}"></div>
+    <div class="field"><label>Price (${prefix})</label><input type="number" class="input mono" id="elPrice" inputmode="decimal" value="${lot.price}"></div>
+    <div class="field"><label>Quantity</label><input type="number" class="input mono" id="elQty" inputmode="decimal" value="${lot.qty}"></div>
     <div class="field"><label>Date</label><input type="date" class="input" id="elDate" value="${new Date(lot.date).toISOString().slice(0,10)}"></div>
     ${isCrypto ? `
     <div class="field">
@@ -2528,12 +2786,12 @@ function openEditLotPrompt(market, id){
 /* --------------------------- ADD MODAL --------------------------- */
 const modalAdd = document.getElementById('modalAdd');
 const addModalBody = document.getElementById('addModalBody');
-let addState = { market:null, mode:'amount', selected:null, feeType:'maker', leverage:1, side:'long' };
+let addState = { market:null, mode:'qty', selected:null, feeType:'maker', leverage:1, side:'long' };
 let coinDropdownOutsideHandler = null;
 let coinDropdownRepositionHandler = null;
 
 function openAddModal(market, prefillSymbol){
-  addState = { market, mode:'amount', selected:null, feeType:'maker', leverage:1, side:'long' };
+  addState = { market, mode:'qty', selected:null, feeType:'maker', leverage:1, side:'long' };
   document.getElementById('addModalTitle').textContent = 'Add ' + (market==='crypto'?'coin':'stock');
   const meta = MARKET_META[market];
 
@@ -2721,14 +2979,14 @@ function renderAddFields(){
       <input type="number" class="input mono" id="fPrice" inputmode="decimal" placeholder="0.00" value="${livePrice!=null?livePrice:''}">
     </div>
     <div class="toggle-group" id="qtyModeToggle">
-      <button data-mode="amount" class="active">By ${meta.symbol} amount</button>
-      <button data-mode="qty">By quantity</button>
+      <button data-mode="qty" class="${addState.mode==='qty'?'active':''}">By quantity</button>
+      <button data-mode="amount" class="${addState.mode==='amount'?'active':''}">By ${meta.symbol} amount</button>
     </div>
-    <div class="field" id="qtyField" style="display:none">
+    <div class="field" id="qtyField" style="display:${addState.mode==='qty'?'block':'none'}">
       <label>Quantity</label>
       <input type="number" class="input mono" id="fQty" inputmode="decimal" placeholder="0.00">
     </div>
-    <div class="field" id="amountField">
+    <div class="field" id="amountField" style="display:${addState.mode==='amount'?'block':'none'}">
       <label>Amount to invest (${meta.symbol})</label>
       <input type="number" class="input mono" id="fAmount" inputmode="decimal" placeholder="0.00">
     </div>
@@ -3350,7 +3608,7 @@ document.getElementById('perfExpandStyle').addEventListener('click', (e)=>{
 // so this listener is delegated on the row rather than bound per-button.
 document.getElementById('perfExpandFY').addEventListener('click', (e)=>{
   const btn = e.target.closest('button'); if(!btn) return;
-  perfExpandFYStart = Number(btn.dataset.fy);
+  perfExpandFYStart = btn.dataset.fy === 'all' ? 'all' : Number(btn.dataset.fy);
   renderPerfExpand();
 });
 // Bars-view period row mixes day-range buttons (data-days) with financial
@@ -3359,7 +3617,7 @@ document.getElementById('perfExpandFY').addEventListener('click', (e)=>{
 document.getElementById('perfExpandBarsPeriod').addEventListener('click', (e)=>{
   const btn = e.target.closest('button'); if(!btn) return;
   if(btn.dataset.days) perfExpandBarsPeriod = Number(btn.dataset.days);
-  else if(btn.dataset.fy) perfExpandBarsPeriod = 'fy:' + btn.dataset.fy;
+  else if(btn.dataset.fy) perfExpandBarsPeriod = btn.dataset.fy === 'all' ? 'all' : 'fy:' + btn.dataset.fy;
   renderPerfExpand();
 });
 // The chart is drawn at the container's measured width, so a viewport change
@@ -3380,6 +3638,254 @@ document.getElementById('btnRefresh').addEventListener('click', async (e)=>{
   renderAll();
   btn.classList.remove('spinning');
 });
+
+/* =====================================================================
+   Moon phase card (collapsible) - sits just above the footer notice.
+   Fully offline: phase times come from Jean Meeus' "Astronomical
+   Algorithms" (ch. 49) series for new / first quarter / full / last
+   quarter moon, accurate to about a minute. Nothing here touches the
+   network, localStorage or any app state.
+
+   Colour language: WAXING (new moon -> full moon) is blue, WANING
+   (full moon -> new moon) is white. The half of the cycle you are in
+   colours the icon, the phase name and the illumination figure.
+
+   Mirrors TradingView's built-in "Moon Phases" indicator: it plots only
+   new moons (circle ABOVE the bar, waxing colour) and full moons (circle
+   BELOW the bar, waning colour) and tints the bars between them. Only
+   new and full moons are listed; the quarter times are used internally
+   for the cycle position and illumination, never displayed.
+   ===================================================================== */
+(function(){
+  const card = document.getElementById('moonCard');
+  if(!card) return;
+  const DAY = 86400000, RAD = Math.PI / 180;
+  const SYNODIC = 29.530588861;
+  const DELTA_T = 69;   // seconds, TT - UT, approx. for the 2020s
+  const COL = { waxing:'#67A3FF', waning:'#F7F5FF' };
+  const PRIMARY = ['New Moon', 'First Quarter', 'Full Moon', 'Last Quarter'];
+  const HALF_OF = ['waxing', 'waxing', 'waning', 'waning'];   // half each primary phase belongs to
+  const NAME_OF = ['Waxing Crescent', 'Waxing Gibbous', 'Waning Gibbous', 'Waning Crescent'];
+  // A primary phase name (e.g. "Full Moon") is shown for this long after it
+  // begins, then the descriptive name (e.g. "Waning Gibbous") takes over.
+  const PRIMARY_WINDOW = 12 * 3600 * 1000;
+
+  // ---- how each phase appears on TradingView's Moon Phases indicator ----
+  const TV_HELP_URL = 'https://www.tradingview.com/support/solutions/43000599884-moon-phases/';
+  const TV_MARK = {   // only new (0) and full (2) moons are plotted
+    0: 'Circle above the bar \u00B7 Expect Bearishness during this period (NFA)',
+    2: 'Circle below the bar \u00B7 Expect Bullishness during this period (NFA)'
+  };
+  const TV_TAG = { 0:'above bar', 2:'below bar' };   // where each listed phase is drawn
+
+  // ---- Meeus ch. 49: instant of a primary phase, returned as epoch ms (UTC) ----
+  // n = whole lunation count since 2000-01-06; q = 0 new, 1 first qtr, 2 full, 3 last qtr
+  function phaseTime(n, q){
+    const k = n + q * 0.25;
+    const T = k / 1236.85, T2 = T*T, T3 = T2*T, T4 = T3*T;
+    let jde = 2451550.09766 + 29.530588861*k + 0.00015437*T2 - 0.000000150*T3 + 0.00000000073*T4;
+    const E = 1 - 0.002516*T - 0.0000074*T2, E2 = E*E;
+    const M  = (2.5534 + 29.10535670*k - 0.0000014*T2 - 0.00000011*T3) * RAD;
+    const Mp = (201.5643 + 385.81693528*k + 0.0107582*T2 + 0.00001238*T3 - 0.000000058*T4) * RAD;
+    const F  = (160.7108 + 390.67050284*k - 0.0016118*T2 - 0.00000227*T3 + 0.000000011*T4) * RAD;
+    const Om = (124.7746 - 1.56375588*k + 0.0020672*T2 + 0.00000215*T3) * RAD;
+    const s = Math.sin, c = Math.cos;
+    let corr;
+    if(q === 0 || q === 2){
+      const a = q === 0
+        ? [-0.40720, 0.17241, 0.01608, 0.01039, 0.00739, -0.00514, 0.00208]
+        : [-0.40614, 0.17302, 0.01614, 0.01043, 0.00734, -0.00515, 0.00209];
+      corr = a[0]*s(Mp) + a[1]*E*s(M) + a[2]*s(2*Mp) + a[3]*s(2*F)
+           + a[4]*E*s(Mp-M) + a[5]*E*s(Mp+M) + a[6]*E2*s(2*M)
+           - 0.00111*s(Mp-2*F) - 0.00057*s(Mp+2*F) + 0.00056*E*s(2*Mp+M) - 0.00042*s(3*Mp)
+           + 0.00042*E*s(M+2*F) + 0.00038*E*s(M-2*F) - 0.00024*E*s(2*Mp-M) - 0.00017*s(Om)
+           - 0.00007*s(Mp+2*M) + 0.00004*s(2*Mp-2*F) + 0.00004*s(3*M) + 0.00003*s(Mp+M-2*F)
+           + 0.00003*s(2*Mp+2*F) - 0.00003*s(Mp+M+2*F) + 0.00003*s(Mp-M+2*F)
+           - 0.00002*s(Mp-M-2*F) - 0.00002*s(3*Mp+M) + 0.00002*s(4*Mp);
+    }else{
+      corr = -0.62801*s(Mp) + 0.17172*E*s(M) - 0.01183*E*s(Mp+M) + 0.00862*s(2*Mp) + 0.00804*s(2*F)
+           + 0.00454*E*s(Mp-M) + 0.00204*E2*s(2*M) - 0.00180*s(Mp-2*F) - 0.00070*s(Mp+2*F)
+           - 0.00040*s(3*Mp) - 0.00034*E*s(2*Mp-M) + 0.00032*E*s(M+2*F) + 0.00032*E*s(M-2*F)
+           - 0.00028*E2*s(Mp+2*M) + 0.00027*E*s(2*Mp+M) - 0.00017*s(Om) - 0.00005*s(Mp-M-2*F)
+           + 0.00004*s(2*Mp+2*F) - 0.00004*s(Mp+M+2*F) + 0.00004*s(Mp-2*M) + 0.00003*s(Mp+M-2*F)
+           + 0.00003*s(3*M) + 0.00002*s(2*Mp-2*F) + 0.00002*s(Mp-M+2*F) - 0.00002*s(3*Mp+M);
+      const W = 0.00306 - 0.00038*E*c(M) + 0.00026*c(Mp) - 0.00002*c(Mp-M) + 0.00002*c(Mp+M) + 0.00002*c(2*F);
+      corr += q === 1 ? W : -W;
+    }
+    // Additional planetary corrections
+    const A = [
+      [299.77 + 0.107408*k - 0.009173*T2, 0.000325],
+      [251.88 + 0.016321*k, 0.000165], [251.83 + 26.651886*k, 0.000164],
+      [349.42 + 36.412478*k, 0.000126], [84.66 + 18.206239*k, 0.000110],
+      [141.74 + 53.303771*k, 0.000062], [207.14 + 2.453732*k, 0.000060],
+      [154.84 + 7.306860*k, 0.000056], [34.52 + 27.261239*k, 0.000047],
+      [207.19 + 0.121824*k, 0.000042], [291.34 + 1.844379*k, 0.000040],
+      [161.72 + 24.198154*k, 0.000037], [239.56 + 25.513099*k, 0.000035],
+      [331.55 + 3.592518*k, 0.000023]
+    ];
+    let planetary = 0;
+    A.forEach(p => { planetary += p[1] * s(p[0] * RAD); });
+    jde += corr + planetary;
+    return (jde - 2440587.5) * DAY - DELTA_T * 1000;
+  }
+
+  // Sorted primary-phase events spanning a couple of lunations either side of `now`.
+  function eventsAround(now){
+    const n0 = Math.floor((now / DAY + 2440587.5 - 2451550.09766) / SYNODIC);
+    const out = [];
+    for(let n = n0 - 2; n <= n0 + 3; n++){
+      for(let q = 0; q < 4; q++) out.push({ q, t: phaseTime(n, q) });
+    }
+    return out.sort((a, b) => a.t - b.t);
+  }
+
+  function compute(now){
+    const ev = eventsAround(now);
+    let i = 0;
+    while(i < ev.length - 1 && ev[i + 1].t <= now) i++;
+    const cur = ev[i], nxt = ev[i + 1];
+    const frac = (now - cur.t) / (nxt.t - cur.t);          // progress through this quarter (0-1)
+    const p = (cur.q + frac) / 4;                          // cycle position: 0 new, .5 full, 1 new
+    const half = HALF_OF[cur.q];
+    const sincePrimary = now - cur.t < PRIMARY_WINDOW;
+    const name = (sincePrimary && (cur.q === 0 || cur.q === 2)) ? PRIMARY[cur.q] : NAME_OF[cur.q];
+    const illum = (1 - Math.cos(2 * Math.PI * p)) / 2;
+    // The waxing / waning half began at the last new moon / full moon...
+    const halfStartQ = half === 'waxing' ? 0 : 2;
+    let halfStart = null;
+    for(let j = i; j >= 0; j--){ if(ev[j].q === halfStartQ){ halfStart = ev[j]; break; } }
+    // ...and the next half begins at the next full moon / new moon.
+    const nextHalfQ = half === 'waxing' ? 2 : 0;
+    let nextHalf = null;
+    for(let j = i + 1; j < ev.length; j++){ if(ev[j].q === nextHalfQ){ nextHalf = ev[j]; break; } }
+    let lastNew = null;
+    for(let j = i; j >= 0; j--){ if(ev[j].q === 0){ lastNew = ev[j]; break; } }
+    return {
+      p, half, name, illum,
+      ageDays: lastNew ? (now - lastNew.t) / DAY : null,
+      halfStart, nextHalf,
+      upcoming: ev.slice(i + 1).filter(e => e.q === 0 || e.q === 2).slice(0, 2)
+    };
+  }
+
+  // ---- moon icon: dark disc + lit shape (right side lit while waxing, left while waning) ----
+  function moonSvg(p, color, size){
+    const r = 16, cx = 20, cy = 20;
+    const cc = Math.cos(2 * Math.PI * p);
+    const rx = Math.abs(r * cc).toFixed(2);
+    let d;
+    if(p < 0.5){
+      d = `M${cx} ${cy - r} A${r} ${r} 0 0 1 ${cx} ${cy + r} A${rx} ${r} 0 0 ${cc > 0 ? 0 : 1} ${cx} ${cy - r}Z`;
+    }else{
+      d = `M${cx} ${cy - r} A${r} ${r} 0 0 0 ${cx} ${cy + r} A${rx} ${r} 0 0 ${cc > 0 ? 1 : 0} ${cx} ${cy - r}Z`;
+    }
+    return `<svg class="moon-svg" width="${size}" height="${size}" viewBox="0 0 40 40" aria-hidden="true" style="filter:drop-shadow(0 0 ${Math.round(size/6)}px ${color}66)">`
+         + `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#1C1932"/>`
+         + `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}" fill-opacity=".10" stroke="${color}" stroke-opacity=".6" stroke-width="1.4"/>`
+         + `<path d="${d}" fill="${color}"/></svg>`;
+  }
+
+  function fmtWhen(ms, compact){
+    const d = new Date(ms), o = { day:'numeric', month:'short', hour:'numeric', minute:'2-digit' };
+    if(!compact) o.weekday = 'short';
+    if(d.getFullYear() !== new Date().getFullYear()) o.year = 'numeric';
+    return d.toLocaleString(undefined, o);
+  }
+  // Calendar date of the UTC day an instant falls in (= the daily candle on 24/7 crypto charts).
+  function fmtUtcDay(ms){
+    const d = new Date(ms), o = { day:'numeric', month:'short', timeZone:'UTC' };
+    if(d.getUTCFullYear() !== new Date().getUTCFullYear()) o.year = 'numeric';
+    return d.toLocaleDateString(undefined, o);
+  }
+  function fmtSpan(ms){
+    const m = Math.floor(Math.abs(ms) / 60000);
+    const d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mm = m % 60;
+    if(d >= 1) return `${d}d ${h}h`;
+    if(h >= 1) return `${h}h ${mm}m`;
+    return `${Math.max(1, mm)}m`;
+  }
+
+  const $ = id => document.getElementById(id);
+  function render(){
+    const now = Date.now();
+    const m = compute(now);
+    const color = COL[m.half];
+    card.dataset.half = m.half;
+    card.style.setProperty('--moon-c', color);
+
+    const halfWord = m.half === 'waxing' ? 'Waxing' : 'Waning';
+    const nextHalfWord = m.half === 'waxing' ? 'Waning' : 'Waxing';
+    const nextHalfPrimary = PRIMARY[m.half === 'waxing' ? 2 : 0];
+    $('moonIcon').innerHTML = moonSvg(m.p, color, 38);
+    $('moonName').textContent = m.name;
+    $('moonSub').textContent = m.nextHalf
+      ? `${halfWord} · ${nextHalfPrimary} in ${fmtSpan(m.nextHalf.t - now)}`
+      : halfWord;
+    $('moonIllum').textContent = Math.round(m.illum * 100) + '%';
+
+    // cycle bar marker + readout
+    $('moonMarker').style.left = (m.p * 100).toFixed(2) + '%';
+    $('moonStats').innerHTML = `<b style="color:${color}">${Math.round(m.illum * 100)}%</b> illuminated`
+      + (m.ageDays != null ? ` · day <b>${m.ageDays.toFixed(1)}</b> of ${SYNODIC.toFixed(1)}` : '');
+
+    // started / next-phase rows
+    const rowHtml = (label, evt, kind, whenTxt, relTxt) => {
+      const col = COL[kind];
+      return `<div class="moon-row">${moonSvg(evt.q / 4, col, 30)}`
+        + `<div class="moon-row-main"><div class="moon-row-k" style="color:${col}">${label}</div><div class="moon-row-v">${PRIMARY[evt.q]}</div></div>`
+        + `<div class="moon-row-side"><div class="moon-row-when">${whenTxt}</div><div class="moon-row-rel">${relTxt}</div>`
+        + `<div class="moon-row-rel">UTC 1D candle \u00B7 ${fmtUtcDay(evt.t)}</div></div>`
+        + `<div class="moon-row-tv"><i style="background:${col}"></i>${TV_MARK[evt.q]}</div></div>`;
+    };
+    let rows = '';
+    if(m.halfStart) rows += rowHtml(`${halfWord} since`, m.halfStart, m.half, fmtWhen(m.halfStart.t), `${fmtSpan(now - m.halfStart.t)} ago`);
+    if(m.nextHalf)  rows += rowHtml(`${nextHalfWord} starts`, m.nextHalf, m.half === 'waxing' ? 'waning' : 'waxing', fmtWhen(m.nextHalf.t), `in ${fmtSpan(m.nextHalf.t - now)}`);
+    $('moonRows').innerHTML = rows;
+
+    $('moonUpcoming').innerHTML = m.upcoming.map(e => {
+      const col = COL[HALF_OF[e.q]];
+      return `<div class="moon-up">${moonSvg(e.q / 4, col, 22)}`
+        + `<span class="moon-up-name">${PRIMARY[e.q]}<small>${TV_TAG[e.q]}</small></span>`
+        + `<span class="moon-up-when">${fmtWhen(e.t, true)}</span>`
+        + `<span class="moon-up-rel">in ${fmtSpan(e.t - now)}</span></div>`;
+    }).join('');
+  }
+
+  $('moonToggle').addEventListener('click', () => {
+    const body = $('moonBody');
+    const willOpen = body.hidden;
+    body.hidden = !willOpen;
+    card.classList.toggle('open', willOpen);
+    $('moonToggle').setAttribute('aria-expanded', String(willOpen));
+  });
+
+  // "About the TradingView indicator" - collapsed every time, nothing persisted
+  $('moonInfoToggle').addEventListener('click', () => {
+    const box = $('moonInfo'), btn = $('moonInfoToggle');
+    const willOpen = box.hidden;
+    box.hidden = !willOpen;
+    btn.classList.toggle('open', willOpen);
+    btn.setAttribute('aria-expanded', String(willOpen));
+  });
+
+  // This page runs in an iframe inside the app shell, so external links must go through
+  // window.open() (openExternalLink) rather than a plain href navigation.
+  $('moonHelpLink').addEventListener('click', e => {
+    e.preventDefault();
+    if(typeof openExternalLink === 'function') openExternalLink(TV_HELP_URL);
+    else window.open(TV_HELP_URL, '_blank', 'noopener,noreferrer');
+  });
+
+  try{
+    render();
+    setInterval(() => { try{ render(); }catch(e){} }, 60000);
+  }catch(e){
+    // Never let a moon-card problem affect the rest of the page.
+    card.style.display = 'none';
+    console.error('Moon phase card failed:', e);
+  }
+
+})();
 
 /* --------------------------- footer notice toggle --------------------------- */
 document.getElementById('footerNoticeToggle').addEventListener('click', ()=>{
