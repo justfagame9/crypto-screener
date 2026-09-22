@@ -2621,6 +2621,41 @@ function ichimoku(c, conv=9, base=26, spanB=52){
   return { tenkan, kijun, spanA, spanB:spanBv, chikou, chikouRef, cloudTop, cloudBot, position };
 }
 
+// Full-series companion to ichimoku() above, for drawing lines across the
+// Chart section's visible candles rather than just today's single reading.
+// Same formulas, same "shifted = i - base" convention for Span A/B (the
+// cloud visible at bar i was calculated `base` bars earlier) and for Chikou
+// (today's close, printed `base` bars back — so chikou[i] pulls the close
+// from `base` bars *ahead* of i). Returned arrays are aligned 1:1 with `c`.
+function ichimokuSeriesFull(c, conv=9, base=26, spanB=52){
+  const n = c.length;
+  const midAt = (len, end) => {
+    if(end-len+1 < 0) return NaN;
+    let hi=-Infinity, lo=Infinity;
+    for(let i=end-len+1;i<=end;i++){ if(c[i].high>hi) hi=c[i].high; if(c[i].low<lo) lo=c[i].low; }
+    return (hi+lo)/2;
+  };
+  const tenkan = new Array(n).fill(NaN), kijun = new Array(n).fill(NaN);
+  const spanA = new Array(n).fill(NaN), spanBArr = new Array(n).fill(NaN);
+  const chikou = new Array(n).fill(NaN);
+  const cloudTop = new Array(n).fill(NaN), cloudBot = new Array(n).fill(NaN);
+  for(let i=0;i<n;i++){
+    tenkan[i] = midAt(conv, i);
+    kijun[i] = midAt(base, i);
+    const shifted = i - base;
+    if(shifted>=0){
+      spanA[i] = (midAt(conv, shifted)+midAt(base, shifted))/2;
+      spanBArr[i] = midAt(spanB, shifted);
+      if(Number.isFinite(spanA[i]) && Number.isFinite(spanBArr[i])){
+        cloudTop[i] = Math.max(spanA[i], spanBArr[i]);
+        cloudBot[i] = Math.min(spanA[i], spanBArr[i]);
+      }
+    }
+    if(i+base < n) chikou[i] = c[i+base].close;
+  }
+  return { tenkan, kijun, spanA, spanB:spanBArr, chikou, cloudTop, cloudBot };
+}
+
 function stochastic(c, len=14, k=3, d=3){
   const n=c.length;
   if(n < len+k+d) return { k:NaN, d:NaN };
@@ -3305,6 +3340,16 @@ function computeValues(candles, tf, ticker, derivs){
   set('fib5',   fib ? px(fib.f5)   : '—', fib?side(fib.f5):'');
   set('fib618', fib ? px(fib.f618) : '—', fib?side(fib.f618):'');
 
+  // Raw Market Structure objects (with bar idx where one exists) stashed for
+  // the Chart section's "show on chart" overlay — see drawMarketStructureOverlay().
+  latestStructure = {
+    swingHigh: sw.sh.length ? sw.sh[sw.sh.length-1] : null,
+    swingLow: sw.sl.length ? sw.sl[sw.sl.length-1] : null,
+    support: sup, resistance: res,
+    pivP: pv.P, pivR1: pv.R1, pivR2: pv.R2, pivS1: pv.S1, pivS2: pv.S2,
+    fib382: fib ? fib.f382 : NaN, fib5: fib ? fib.f5 : NaN, fib618: fib ? fib.f618 : NaN
+  };
+
   /* ---- Derivatives ---- */
   const d = derivs || {};
   set('funding', Number.isFinite(d.funding) ? pct(d.funding*100,4) : '—',
@@ -3407,6 +3452,7 @@ let currentSource = null;
 let latestValues = null;
 let latestCandles = null;
 let latestIct = null;        // raw ICT objects (with bar idx) for the chart overlay
+let latestStructure = null;  // raw Market Structure objects (with bar idx where known) for the chart overlay
 let ictOverlayEnabled = false; // "Chart" checkbox in the ICT section header — "show everything" mode
 let ictMemberOverlay = new Set(); // individually-checked ICT member keys — used whenever the header checkbox is off
 const BAR_COUNTS = [30,45,90,180]; // Chart section's selectable window sizes
@@ -3431,12 +3477,44 @@ let volatilityOverlayEnabled = false; // "Chart" checkbox in the Volatility head
 // CCI, Williams %R, MFI, ROC) — none of them share the price chart's $
 // scale, so the Momentum section has no Chart checkboxes at all (header or
 // per-member) — nothing in it can ever be overlaid on the candlestick chart.
-// True when a given ICT/Trend/Volatility member (by its GROUPS key, e.g.
-// 'fvgBull' or 'ema20') should be drawn on the Chart: either that section's
-// header "show all" checkbox is on, or the member was checked by hand.
+// Ichimoku lines that sit on the price $ scale — Tenkan/Kijun/Span A/Span B/
+// Chikou are literal price levels, so all five are chartable individually.
+// Cloud Position ('Above'/'Below'/'Inside') is a text label, and Cloud Top/
+// Bottom are just the running max/min of Span A & B — rather than offer
+// them as separate lines, checking Span A *and* Span B together paints the
+// shaded kumo cloud between them (see drawIchimokuCloud below), so those
+// three stay disabled/greyed instead.
+const ICHIMOKU_CHARTABLE = new Set(['tenkan','kijun','spanA','spanB','chikou']);
+let ichimokuMemberOverlay = new Set(); // individually-checked Ichimoku member keys shown on the Chart
+let ichimokuOverlayEnabled = false; // "Chart" checkbox in the Ichimoku header — shows every chartable Ichimoku line
+// Market Structure levels that sit on the price $ scale: Swing High/Low,
+// Support/Resistance, the Pivot Points and the Fib retracement levels are
+// all literal prices, so all twelve are chartable individually. Structure
+// Trend ('Bullish'/'Bearish'/'Range') is a text label, not a price level,
+// so that one stays disabled/greyed like the non-chartable Trend/Volatility
+// members above.
+const STRUCTURE_CHARTABLE = new Set(['swingHigh','swingLow','support','resistance','pivP','pivR1','pivR2','pivS1','pivS2','fib382','fib5','fib618']);
+// Pivot R1/R2/S1/S2 and Fib 0.382 clutter the chart fast (5 extra lines) and
+// are the ones traders least often want all-at-once, so the header "Chart"
+// checkbox deliberately skips them — they stay individually chartable, just
+// only ever get checked by hand, never swept in by "select all".
+const STRUCTURE_MASTER_EXCLUDE = new Set(['pivR1','pivR2','pivS1','pivS2','fib382']);
+let structureMemberOverlay = new Set(); // individually-checked Market Structure member keys shown on the Chart
+let structureOverlayEnabled = false; // "Chart" checkbox in the Market Structure header — shows every chartable level except STRUCTURE_MASTER_EXCLUDE
+// True when a given ICT/Trend/Volatility/Ichimoku/Structure member (by its
+// GROUPS key, e.g. 'fvgBull' or 'ema20') should be drawn on the Chart:
+// either that section's header "show all" checkbox is on, or the member
+// was checked by hand. Market Structure is the one exception: for the five
+// keys in STRUCTURE_MASTER_EXCLUDE the header checkbox is ignored entirely
+// — those only ever show when checked individually.
 function ictShown(key){ return ictOverlayEnabled || ictMemberOverlay.has(key); }
 function trendShown(key){ return trendOverlayEnabled || trendMemberOverlay.has(key); }
 function volatilityShown(key){ return volatilityOverlayEnabled || volatilityMemberOverlay.has(key); }
+function ichimokuShown(key){ return ichimokuOverlayEnabled || ichimokuMemberOverlay.has(key); }
+function structureShown(key){
+  if(STRUCTURE_MASTER_EXCLUDE.has(key)) return structureMemberOverlay.has(key);
+  return structureOverlayEnabled || structureMemberOverlay.has(key);
+}
 let loadToken = 0;
 
 function normalizeSymbol(raw){
@@ -3472,9 +3550,10 @@ function renderGroups(values){
         // ICT rows get their own "show on Chart" checkbox so a specific level
         // (say, just the Bullish FVG) can be isolated on the Chart section
         // below instead of the whole section's worth of overlays at once.
-        // Trend/Volatility rows get the same, but only members in that
-        // group's *_CHARTABLE set are enabled — anything on a different
-        // scale than price (MACD, ADX/DI, Aroon, ATR%, BB %B, etc.) shows up
+        // Trend/Volatility/Ichimoku/Structure rows get the same, but only
+        // members in that group's *_CHARTABLE set are enabled — anything on
+        // a different scale than price (MACD, ADX/DI, Aroon, ATR%, BB %B,
+        // Cloud Position/Top/Bottom, Structure Trend, etc.) shows up
         // disabled/greyed instead. Momentum is all oscillators — none of
         // them are chartable — so that section gets no checkbox at all.
         const check = g.key==='ict'
@@ -3487,7 +3566,15 @@ function renderGroups(values){
               ? (VOLATILITY_CHARTABLE.has(key)
                 ? `<input type="checkbox" class="taVolatilityMemberToggle analysis-row-check" data-key="${key}" title="Show ${esc(label)} on the Chart" ${volatilityShown(key) ? 'checked' : ''}>`
                 : `<input type="checkbox" class="analysis-row-check" disabled title="${esc(label)} can't be overlaid on the price chart — different scale">`)
-              : '';
+              : g.key==='ichimoku'
+                ? (ICHIMOKU_CHARTABLE.has(key)
+                  ? `<input type="checkbox" class="taIchimokuMemberToggle analysis-row-check" data-key="${key}" title="Show ${esc(label)} on the Chart" ${ichimokuShown(key) ? 'checked' : ''}>`
+                  : `<input type="checkbox" class="analysis-row-check" disabled title="${key==='cloudPos' ? esc(label)+" can't be overlaid on the price chart — not a price level" : 'Shown as the shaded cloud fill when Span A and Span B are both checked'}">`)
+                : g.key==='structure'
+                  ? (STRUCTURE_CHARTABLE.has(key)
+                    ? `<input type="checkbox" class="taStructureMemberToggle analysis-row-check" data-key="${key}" title="Show ${esc(label)} on the Chart" ${structureShown(key) ? 'checked' : ''}>`
+                    : `<input type="checkbox" class="analysis-row-check" disabled title="${esc(label)} can't be overlaid on the price chart — not a price level">`)
+                  : '';
         return `<div class="analysis-row">
           <span class="analysis-row-label">${label}</span>
           <span class="analysis-row-val-wrap">${sub}<span class="analysis-row-valcheck"><span class="analysis-row-value${cls}">${esc(v)}</span>${check}</span></span>
@@ -3506,6 +3593,12 @@ function renderGroups(values){
         </label>` : ''}
         ${g.key==='volatility' ? `<label class="analysis-ict-chart-toggle" title="Overlay every chartable Volatility indicator on the Chart" onclick="event.stopPropagation()">
           <input type="checkbox" class="taVolatilityChartToggle" ${volatilityOverlayEnabled ? 'checked' : ''}>
+        </label>` : ''}
+        ${g.key==='ichimoku' ? `<label class="analysis-ict-chart-toggle" title="Overlay every chartable Ichimoku line on the Chart" onclick="event.stopPropagation()">
+          <input type="checkbox" class="taIchimokuChartToggle" ${ichimokuOverlayEnabled ? 'checked' : ''}>
+        </label>` : ''}
+        ${g.key==='structure' ? `<label class="analysis-ict-chart-toggle" title="Overlay every chartable Market Structure level on the Chart" onclick="event.stopPropagation()">
+          <input type="checkbox" class="taStructureChartToggle" ${structureOverlayEnabled ? 'checked' : ''}>
         </label>` : ''}
         ${g.isChart
           ? `<div class="analysis-bar-toggle">${BAR_COUNTS.map(n=>`<button type="button" class="taBarCountBtn${n===chartBarCount?' active':''}" data-bars="${n}">${n}</button>`).join('')}</div>`
@@ -3568,6 +3661,23 @@ function toggleVolatilityOverlay(checked){
   if(checked && chartIdx>=0 && collapsedGroups.has(chartIdx)) collapsedGroups.delete(chartIdx);
   renderGroups(latestValues);
 }
+function toggleIchimokuOverlay(checked){
+  ichimokuOverlayEnabled = checked;
+  ichimokuMemberOverlay = new Set();
+  const chartIdx = GROUPS.findIndex(g=>g.key==='chart');
+  if(checked && chartIdx>=0 && collapsedGroups.has(chartIdx)) collapsedGroups.delete(chartIdx);
+  renderGroups(latestValues);
+}
+function toggleStructureOverlay(checked){
+  structureOverlayEnabled = checked;
+  // Wipe only the header-controlled members — anything from
+  // STRUCTURE_MASTER_EXCLUDE that was checked by hand stays checked, since
+  // the header never governed it in the first place.
+  structureMemberOverlay = new Set([...structureMemberOverlay].filter(k => STRUCTURE_MASTER_EXCLUDE.has(k)));
+  const chartIdx = GROUPS.findIndex(g=>g.key==='chart');
+  if(checked && chartIdx>=0 && collapsedGroups.has(chartIdx)) collapsedGroups.delete(chartIdx);
+  renderGroups(latestValues);
+}
 
 // A member checkbox was clicked by hand. Per-member selection and the header
 // "show all" checkbox are mutually exclusive: the first manual pick always
@@ -3612,6 +3722,40 @@ function toggleVolatilityMember(key, checked){
   }
   if(checked) volatilityMemberOverlay.add(key);
   else volatilityMemberOverlay.delete(key);
+  const chartIdx = GROUPS.findIndex(g=>g.key==='chart');
+  if(checked && chartIdx>=0 && collapsedGroups.has(chartIdx)) collapsedGroups.delete(chartIdx);
+  renderGroups(latestValues);
+}
+
+// Ichimoku member checkbox clicked. Same pattern as Trend/Volatility above.
+function toggleIchimokuMember(key, checked){
+  if(!ICHIMOKU_CHARTABLE.has(key)) return; // disabled boxes shouldn't fire, but guard anyway
+  if(ichimokuOverlayEnabled){
+    ichimokuOverlayEnabled = false;
+    ichimokuMemberOverlay = new Set(ICHIMOKU_CHARTABLE);
+  }
+  if(checked) ichimokuMemberOverlay.add(key);
+  else ichimokuMemberOverlay.delete(key);
+  const chartIdx = GROUPS.findIndex(g=>g.key==='chart');
+  if(checked && chartIdx>=0 && collapsedGroups.has(chartIdx)) collapsedGroups.delete(chartIdx);
+  renderGroups(latestValues);
+}
+
+// Market Structure member checkbox clicked. Same pattern as Trend/Volatility/
+// Ichimoku above, with one difference: the five keys in
+// STRUCTURE_MASTER_EXCLUDE (Pivot R1/R2/S1/S2, Fib 0.382) are never part of
+// the header's "select all" and so never trigger or get pulled in by the
+// re-seed — clicking one of those just adds/removes that single key.
+function toggleStructureMember(key, checked){
+  if(!STRUCTURE_CHARTABLE.has(key)) return; // disabled boxes shouldn't fire, but guard anyway
+  if(structureOverlayEnabled && !STRUCTURE_MASTER_EXCLUDE.has(key)){
+    structureOverlayEnabled = false;
+    const keptExcluded = [...structureMemberOverlay].filter(k => STRUCTURE_MASTER_EXCLUDE.has(k));
+    const headerKeys = [...STRUCTURE_CHARTABLE].filter(k => !STRUCTURE_MASTER_EXCLUDE.has(k));
+    structureMemberOverlay = new Set([...headerKeys, ...keptExcluded]);
+  }
+  if(checked) structureMemberOverlay.add(key);
+  else structureMemberOverlay.delete(key);
   const chartIdx = GROUPS.findIndex(g=>g.key==='chart');
   if(checked && chartIdx>=0 && collapsedGroups.has(chartIdx)) collapsedGroups.delete(chartIdx);
   renderGroups(latestValues);
@@ -3708,6 +3852,32 @@ function drawTaChart(){
     }
     volLevels.forEach(v=>{ if(Number.isFinite(v)){ if(v>max) max=v; if(v<min) min=v; } });
   }
+  // Same widening for any checked Ichimoku overlay — Span A/B (and the
+  // cloud they form) are shifted `base` bars, and Chikou trails price, so
+  // any of the three can sit outside the visible window's own high-low.
+  if(ichimokuOverlayEnabled || ichimokuMemberOverlay.size){
+    const ichLevels = [];
+    const needed = ['tenkan','kijun','spanA','spanB','chikou'].some(k=>ichimokuShown(k));
+    if(needed){
+      const ich = ichimokuSeriesFull(latestCandles);
+      ['tenkan','kijun','spanA','spanB','chikou'].forEach(k=>{
+        if(ichimokuShown(k)){ for(let i=startIdx;i<latestCandles.length;i++) ichLevels.push(ich[k][i]); }
+      });
+    }
+    ichLevels.forEach(v=>{ if(Number.isFinite(v)){ if(v>max) max=v; if(v<min) min=v; } });
+  }
+  // Same widening for any checked Market Structure overlay — Swing High/Low,
+  // Support/Resistance, Pivots and Fib levels can all sit outside the
+  // visible window's own high-low.
+  if((structureOverlayEnabled || structureMemberOverlay.size) && latestStructure){
+    const msLevels = [];
+    if(structureShown('swingHigh') && latestStructure.swingHigh) msLevels.push(latestStructure.swingHigh.price);
+    if(structureShown('swingLow') && latestStructure.swingLow) msLevels.push(latestStructure.swingLow.price);
+    ['support','resistance','pivP','pivR1','pivR2','pivS1','pivS2','fib382','fib5','fib618'].forEach(k=>{
+      if(structureShown(k)) msLevels.push(latestStructure[k]);
+    });
+    msLevels.forEach(v=>{ if(Number.isFinite(v)){ if(v>max) max=v; if(v<min) min=v; } });
+  }
   const range = (max-min) || 1;
   const x = i => pad.left + i*(width-pad.left-pad.right)/Math.max(1,bars.length-1);
   const y = p => pad.top + (max-p)*(height-pad.top-pad.bottom)/range;
@@ -3739,6 +3909,8 @@ function drawTaChart(){
   }
   if(trendOverlayEnabled || trendMemberOverlay.size) drawTrendOverlay(ctx, bars, startIdx, x, y); // lines on top so they read clearly over the candles
   if(volatilityOverlayEnabled || volatilityMemberOverlay.size) drawVolatilityOverlay(ctx, bars, startIdx, x, y);
+  if(ichimokuOverlayEnabled || ichimokuMemberOverlay.size) drawIchimokuOverlay(ctx, bars, startIdx, x, y);
+  if((structureOverlayEnabled || structureMemberOverlay.size) && latestStructure) drawMarketStructureOverlay(ctx, bars, startIdx, x, y, width, height, pad);
 }
 
 // Draws the ICT/Smart Money section's own data (FVGs, order blocks, breaker,
@@ -3886,6 +4058,102 @@ function drawVolatilityOverlay(ctx, bars, startIdx, x, y){
   }
 }
 
+// Draws whichever Ichimoku members are individually checked (Tenkan/Kijun/
+// Span A/Span B/Chikou/Cloud Top/Cloud Bottom) on top of the candles. Same
+// draw-a-line-series approach as drawTrendOverlay()/drawVolatilityOverlay()
+// above, against the full-series companion computed by ichimokuSeriesFull().
+const ICHIMOKU_LINE_COLOR = { tenkan:'#ff5470', kijun:'#5b8cff', spanA:'#35e0c0', spanB:'#a78bfa', chikou:'#f0c24b' };
+function drawIchimokuOverlay(ctx, bars, startIdx, x, y){
+  if(!latestCandles || !(ichimokuOverlayEnabled || ichimokuMemberOverlay.size)) return;
+  const drawLineSeries = (series, color, dashed)=>{
+    ctx.strokeStyle = color; ctx.lineWidth = 1.3; ctx.setLineDash(dashed ? [4,3] : []);
+    ctx.beginPath();
+    let started = false;
+    bars.forEach((_,i)=>{
+      const v = series[startIdx+i];
+      if(!Number.isFinite(v)){ started = false; return; }
+      const px_ = x(i), py_ = y(v);
+      if(!started){ ctx.moveTo(px_,py_); started = true; } else ctx.lineTo(px_,py_);
+    });
+    ctx.stroke(); ctx.setLineDash([]);
+  };
+  const needed = ['tenkan','kijun','spanA','spanB','chikou'].some(k=>ichimokuShown(k));
+  if(!needed) return;
+  const ich = ichimokuSeriesFull(latestCandles);
+  // Cloud fill goes first so the boundary lines (when checked) read clearly
+  // on top of it. Only paints when both edges are checked — a single span
+  // line has nothing to shade against.
+  if(ichimokuShown('spanA') && ichimokuShown('spanB')) drawIchimokuCloud(ctx, bars, startIdx, x, y, ich);
+  if(ichimokuShown('tenkan')) drawLineSeries(ich.tenkan, ICHIMOKU_LINE_COLOR.tenkan);
+  if(ichimokuShown('kijun')) drawLineSeries(ich.kijun, ICHIMOKU_LINE_COLOR.kijun);
+  if(ichimokuShown('spanA')) drawLineSeries(ich.spanA, ICHIMOKU_LINE_COLOR.spanA);
+  if(ichimokuShown('spanB')) drawLineSeries(ich.spanB, ICHIMOKU_LINE_COLOR.spanB);
+  if(ichimokuShown('chikou')) drawLineSeries(ich.chikou, ICHIMOKU_LINE_COLOR.chikou, true);
+}
+
+// Paints the kumo cloud between Span A and Span B as a soft fill — green
+// where Span A sits above Span B (bullish cloud), red where it's below
+// (bearish) — recoloring segment by segment across any A/B crossover, with
+// no stroked outline around the shape (fill only, matching a plain shaded-
+// ribbon look rather than a bordered box).
+function drawIchimokuCloud(ctx, bars, startIdx, x, y, ich){
+  for(let i=1;i<bars.length;i++){
+    const aPrev = ich.spanA[startIdx+i-1], bPrev = ich.spanB[startIdx+i-1];
+    const aCur = ich.spanA[startIdx+i], bCur = ich.spanB[startIdx+i];
+    if(![aPrev,bPrev,aCur,bCur].every(Number.isFinite)) continue;
+    const bullish = (aPrev+aCur) >= (bPrev+bCur);
+    ctx.fillStyle = bullish ? 'rgba(53,224,192,0.16)' : 'rgba(255,84,112,0.16)';
+    ctx.beginPath();
+    ctx.moveTo(x(i-1), y(aPrev));
+    ctx.lineTo(x(i), y(aCur));
+    ctx.lineTo(x(i), y(bCur));
+    ctx.lineTo(x(i-1), y(bPrev));
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+// Draws whichever Market Structure members are individually checked (Swing
+// High/Low, Support/Resistance, Pivot Points, Fib retracement levels) onto
+// the chart. Unlike Trend/Volatility/Ichimoku these aren't per-bar series —
+// each is a single "as of now" level — so they're drawn the same way ICT's
+// BOS/CHoCH/EQH/EQL lines are (see drawIctOverlay's line() helper): one
+// dashed horizontal line plus a short label. Swing High/Low anchor at the
+// bar where that swing actually printed (fullIdx, via toX()); Support/
+// Resistance/Pivots/Fibs have no single originating bar, so those span the
+// full visible window from the left edge instead.
+const MARKET_STRUCTURE_LINE_COLOR = {
+  swingHigh:'#ff5470', swingLow:'#35e0c0', support:'#35e0c0', resistance:'#ff5470',
+  pivP:'#f0c24b', pivR1:'#ff5470', pivR2:'#ff5470', pivS1:'#35e0c0', pivS2:'#35e0c0',
+  fib382:'#a78bfa', fib5:'#a78bfa', fib618:'#a78bfa'
+};
+const MARKET_STRUCTURE_LABEL = {
+  swingHigh:'SH', swingLow:'SL', support:'S', resistance:'R',
+  pivP:'P', pivR1:'R1', pivR2:'R2', pivS1:'S1', pivS2:'S2',
+  fib382:'0.382', fib5:'0.5', fib618:'0.618'
+};
+function drawMarketStructureOverlay(ctx, bars, startIdx, x, y, width, height, pad){
+  if(!latestStructure || !(structureOverlayEnabled || structureMemberOverlay.size)) return;
+  const ms = latestStructure;
+  const rightEdge = width - pad.right;
+  const clampCol = w => Math.max(0, Math.min(bars.length-1, w));
+  const toX = fullIdx => x(clampCol(fullIdx - startIdx));
+  const line = (level, color, label, fullIdx)=>{
+    if(!Number.isFinite(level)) return;
+    const left = fullIdx!==undefined ? toX(fullIdx) : pad.left;
+    ctx.strokeStyle = color; ctx.setLineDash([5,4]); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(left, y(level)); ctx.lineTo(rightEdge, y(level)); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = color; ctx.font = '9px JetBrains Mono, monospace';
+    ctx.fillText(label, Math.min(left+3, rightEdge-30), y(level)-3);
+  };
+  if(structureShown('swingHigh') && ms.swingHigh) line(ms.swingHigh.price, MARKET_STRUCTURE_LINE_COLOR.swingHigh, MARKET_STRUCTURE_LABEL.swingHigh, ms.swingHigh.idx);
+  if(structureShown('swingLow') && ms.swingLow) line(ms.swingLow.price, MARKET_STRUCTURE_LINE_COLOR.swingLow, MARKET_STRUCTURE_LABEL.swingLow, ms.swingLow.idx);
+  ['support','resistance','pivP','pivR1','pivR2','pivS1','pivS2','fib382','fib5','fib618'].forEach(k=>{
+    if(structureShown(k)) line(ms[k], MARKET_STRUCTURE_LINE_COLOR[k], MARKET_STRUCTURE_LABEL[k]);
+  });
+}
+
 // Bar-count picker (45/90/180) in the Chart section header. Just needs to
 // flip the active button and redraw — no full renderGroups() rebuild, same
 // as toggleGroup()/toggleAllGroups() above.
@@ -3932,6 +4200,7 @@ async function load(symbol, tf){
   latestValues = null;
   latestCandles = null;
   latestIct = null;
+  latestStructure = null;
   renderGroups(null);
 
   let candles = null, ticker = null, source = null, binanceErr = null;
@@ -4114,6 +4383,10 @@ document.addEventListener('DOMContentLoaded', ()=>{
     else if(e.target.classList.contains('taVolatilityChartToggle')) toggleVolatilityOverlay(e.target.checked);
     else if(e.target.classList.contains('taTrendMemberToggle')) toggleTrendMember(e.target.dataset.key, e.target.checked);
     else if(e.target.classList.contains('taVolatilityMemberToggle')) toggleVolatilityMember(e.target.dataset.key, e.target.checked);
+    else if(e.target.classList.contains('taIchimokuChartToggle')) toggleIchimokuOverlay(e.target.checked);
+    else if(e.target.classList.contains('taIchimokuMemberToggle')) toggleIchimokuMember(e.target.dataset.key, e.target.checked);
+    else if(e.target.classList.contains('taStructureChartToggle')) toggleStructureOverlay(e.target.checked);
+    else if(e.target.classList.contains('taStructureMemberToggle')) toggleStructureMember(e.target.dataset.key, e.target.checked);
   });
   el('analysisOverlay').addEventListener('click', e=>{
     if(e.target.id==='analysisOverlay') close();
