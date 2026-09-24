@@ -416,6 +416,12 @@
   .analysis-modal{position:fixed;inset:0;background:rgba(5,6,9,.78);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:20px;z-index:11;}
   .analysis-modal.open{display:flex;}
   .price-action-modal{z-index:12;} /* stacks above the analysis modal (z-index:11) rather than replacing it */
+  /* Technical Breakdown overlay (z-index:50) is open (openFor() puts .ta-open on <body>): its header Analysis icon opens this page's
+     analysis modal above it. The modals that stack with it are lifted too, in their original order (trade 10 < analysis 11 <
+     price-action/screen-match 12); coininfo-modal (60) still sits above all of them. */
+  body.ta-open .trade-modal{z-index:52;}
+  body.ta-open .analysis-modal{z-index:53;}
+  body.ta-open .price-action-modal{z-index:54;}
   .price-action-link{display:block;width:100%;margin-top:10px;background:rgba(53,224,192,.08);border:1px solid rgba(53,224,192,.3);color:var(--accent);font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;border-radius:7px;padding:8px 10px;cursor:pointer;text-align:left;}
   .price-action-link:hover{background:rgba(53,224,192,.16);border-color:var(--accent);}
   .decision-price-action{display:block;width:100%;margin:12px 0 0;text-align:center;}
@@ -524,7 +530,7 @@
   .info-btn{width:28px;height:28px;flex:0 0 28px;padding:0;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-family:var(--font-mono);font-weight:700;font-size:12px;font-style:italic;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:none;}
   .info-btn:hover{border-color:var(--accent);color:var(--accent);transform:none;}
   .twitter-btn{font-style:normal;font-size:13px;margin-left:6px;}
-  .coininfo-modal{position:fixed;inset:0;background:rgba(5,6,9,.78);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:20px;z-index:12;}
+  .coininfo-modal{position:fixed;inset:0;background:rgba(5,6,9,.78);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:20px;z-index:60;} /* above analysis-overlay (z-index:50) so it's visible when opened from the technical breakdown page's "i" button, and still above analysis-modal/price-action-modal (11/12) */
   .coininfo-modal.open{display:flex;}
   .coininfo-dialog{width:min(560px,100%);max-height:calc(100vh - 40px);overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:0 22px 22px;box-shadow:0 20px 60px rgba(0,0,0,.5);}
   .coininfo-dialog .trade-head{position:sticky;top:0;z-index:5;background:var(--panel);padding:22px 0 14px;margin-bottom:0;border-bottom:1px solid var(--border-soft);}
@@ -1282,6 +1288,15 @@
   }
   .analysis-source.src-binance{color:var(--gold);border-color:rgba(240,194,75,.35);}
   .analysis-source.src-bybit{color:var(--orange);border-color:rgba(255,138,76,.35);}
+  .analysis-meta-icon-btn{
+    width:26px;height:26px;border-radius:8px;flex:none;padding:0;
+    background:var(--panel2);border:1px solid var(--border);color:var(--muted);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    text-decoration:none;box-shadow:none;transition:color .15s,border-color .15s;
+  }
+  .analysis-meta-icon-btn:hover{color:var(--accent);border-color:var(--accent-dim);}
+  .analysis-meta-icon-btn.added{color:var(--accent);border-color:var(--accent-dim);cursor:default;}
+  .analysis-meta-icon-btn.added:hover{color:var(--accent);}
   .analysis-icon-btn{
     width:34px;height:34px;border-radius:10px;flex:none;padding:0;
     background:var(--panel2);border:1px solid var(--border);color:var(--muted);
@@ -1416,6 +1431,12 @@
   </div>
 </div>
 
+</div><!-- /screenerPane -->
+
+<!-- The trade-plan, analysis, price-action and screen-match modals live here, outside #screenerPane, on purpose:
+     #screenerPane is display:none whenever the Custom Screens tab is showing, and a position:fixed modal inside a
+     hidden ancestor never renders - so the technical breakdown's Analysis icon could not show the analysis modal.
+     (Same reason the coin info modal further down is kept at the top level.) Order is unchanged, so stacking is too. -->
 <div class="trade-modal" id="tradeModal" onclick="closeTradePlan(event)">
   <div class="trade-dialog" role="dialog" aria-modal="true" aria-labelledby="tradeTitle" onclick="event.stopPropagation()">
     <div class="trade-head">
@@ -1507,31 +1528,6 @@
     <div id="screenMatchBody"></div>
   </div>
 </div>
-<div class="coininfo-modal" id="coinInfoModal" onclick="closeCoinInfo(event)">
-  <div class="coininfo-dialog" role="dialog" aria-modal="true" aria-labelledby="coinInfoTitle" onclick="event.stopPropagation()">
-    <div class="trade-head">
-      <div class="header-title-wrap">
-        <div><h2 id="coinInfoTitle">Coin info</h2><p id="coinInfoSubtitle"></p></div>
-      </div>
-      <div class="analysis-actions"><button class="close-btn" type="button" aria-label="Close" onclick="closeCoinInfo()">×</button></div>
-    </div>
-    <p class="analysis-status" id="coinInfoStatus">Loading CoinGecko data...</p>
-    <div id="coinInfoDetails" style="display:none;">
-      <h3 style="margin:0 0 12px;font-family:var(--font-mono);font-size:11px;text-transform:uppercase;color:var(--faint);letter-spacing:.08em;">Overview</h3>
-      <div id="coinInfoAbout" class="coininfo-about"></div>
-      <div class="plan-grid" id="coinInfoGrid"></div>
-      <div class="plan-section">
-        <h3>Website</h3>
-        <button type="button" class="coininfo-website" id="coinInfoWebsite">—</button>
-      </div>
-      <div class="plan-section">
-        <h3>CoinGecko</h3>
-        <button type="button" class="coininfo-website" id="coinInfoCoingecko">—</button>
-      </div>
-    </div>
-  </div>
-</div>
-</div><!-- /screenerPane -->
 
 <div id="scannerPane" style="display:none;">
 
@@ -2209,8 +2205,10 @@ function normalizeSearchSymbol(raw){
   return symbol;
 }
 
-async function searchAndAnalyze(){
-  const symbol = normalizeSearchSymbol(coinSearchInput.value);
+async function searchAndAnalyze(symbolOverride){
+  // symbolOverride lets the Technical Breakdown's Analysis icon run this exact flow for the coin it is showing,
+  // without touching the search box. The typeof check keeps event-handler calls (which pass an Event) unaffected.
+  const symbol = normalizeSearchSymbol(typeof symbolOverride === 'string' ? symbolOverride : coinSearchInput.value);
   if(!symbol) return;
   hideError();
   const btn = document.getElementById('coinSearchBtn');
@@ -3720,6 +3718,9 @@ function openTechBreakdown(event){
   if(event) event.stopPropagation();
   const symbol = currentExchangeSymbol;
   if(!symbol || !window.TechAnalysis) return;
+  // This modal was opened from the breakdown's own Analysis icon: the breakdown is already open underneath, so just return to it.
+  const taOverlayEl = document.getElementById('analysisOverlay');
+  if(taOverlayEl && taOverlayEl.classList.contains('open')){ closeAnalysis(); return; }
   const tf = (currentAnalysisInterval === '4h' || currentAnalysisInterval === '1w') ? currentAnalysisInterval : '1d';
   window.TechAnalysis.openSymbol(symbol, tf);
 }
@@ -5843,6 +5844,34 @@ window.Scanner = { addConditionFromForm, setMatchMode, runScan, exportCSV, remov
 
 </script>
 
+<!-- Coin info modal — kept at the top level (not inside #screenerPane) so it
+     still renders when opened from the Custom Screens tab / technical
+     breakdown overlay, both of which live outside #screenerPane. -->
+<div class="coininfo-modal" id="coinInfoModal" onclick="closeCoinInfo(event)">
+  <div class="coininfo-dialog" role="dialog" aria-modal="true" aria-labelledby="coinInfoTitle" onclick="event.stopPropagation()">
+    <div class="trade-head">
+      <div class="header-title-wrap">
+        <div><h2 id="coinInfoTitle">Coin info</h2><p id="coinInfoSubtitle"></p></div>
+      </div>
+      <div class="analysis-actions"><button class="close-btn" type="button" aria-label="Close" onclick="closeCoinInfo()">×</button></div>
+    </div>
+    <p class="analysis-status" id="coinInfoStatus">Loading CoinGecko data...</p>
+    <div id="coinInfoDetails" style="display:none;">
+      <h3 style="margin:0 0 12px;font-family:var(--font-mono);font-size:11px;text-transform:uppercase;color:var(--faint);letter-spacing:.08em;">Overview</h3>
+      <div id="coinInfoAbout" class="coininfo-about"></div>
+      <div class="plan-grid" id="coinInfoGrid"></div>
+      <div class="plan-section">
+        <h3>Website</h3>
+        <button type="button" class="coininfo-website" id="coinInfoWebsite">—</button>
+      </div>
+      <div class="plan-section">
+        <h3>CoinGecko</h3>
+        <button type="button" class="coininfo-website" id="coinInfoCoingecko">—</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Technical Analysis overlay (opened from Coin Lookup on Custom Screens tab) -->
 <div class="analysis-overlay" id="analysisOverlay" role="dialog" aria-modal="true" aria-label="Coin technical analysis">
   <div class="analysis-shell">
@@ -5854,7 +5883,11 @@ window.Scanner = { addConditionFromForm, setMatchMode, runScan, exportCSV, remov
           <div class="analysis-meta">
             <span id="taPrice" class="analysis-price">—</span>
             <span id="taChange" class="analysis-change"></span>
-            <span id="taSource" class="analysis-source">—</span>
+            <span id="taSource" class="analysis-source" style="display:none;">—</span>
+            <button type="button" class="analysis-meta-icon-btn" id="taInfoBtn" title="Coin info" aria-label="Coin info" onclick="TechAnalysis.showCoinInfo()" style="font:italic 700 12px var(--font-mono);">i</button>
+            <a class="analysis-meta-icon-btn" id="taChartLink" href="#" target="_blank" rel="noopener noreferrer" title="Open chart" aria-label="Open chart"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 9.8L10.2 5.8"></path><path d="M6.7 3.8H12.2V9.3"></path></svg></a>
+            <button type="button" class="analysis-meta-icon-btn" id="taWatchlistBtn" title="Add to watchlist" aria-label="Add to watchlist" onclick="TechAnalysis.addToWatchlist(this)"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M8 3.2V12.8"></path><path d="M3.2 8H12.8"></path></svg></button>
+            <button type="button" class="analysis-meta-icon-btn" id="taAnalysisBtn" title="Analysis" aria-label="Analysis" onclick="TechAnalysis.showAnalysis()"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 13V8.5"></path><path d="M8 13V3.5"></path><path d="M12.5 13V6.5"></path></svg></button>
           </div>
         </div>
       </div>
@@ -7453,6 +7486,74 @@ function normalizeSymbol(raw){
   return s;
 }
 const tfLabel = tf => tf==='4h' ? '4 Hour' : tf==='1w' ? 'Weekly' : 'Daily';
+function tvInterval(tf){ return {'1d':'D','1w':'W','4h':'240'}[tf] || 'D'; }
+function tvChartUrl(symbol, tf, source){
+  const exchangePrefix = source === 'Bybit' ? 'BYBIT' : 'BINANCE';
+  const tvSymbol = `${exchangePrefix}:${symbol}.P`;
+  return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(tvSymbol)}&interval=${encodeURIComponent(tvInterval(tf))}`;
+}
+
+// ---- Header "coin info" icon — reuses the same CoinGecko info modal (and
+// its global openCoinInfo() loader) that the Market analysis dialog's "i"
+// button opens, just with this overlay's own currentSymbol. ----
+function showCoinInfo(){
+  if(!currentSymbol) return;
+  if(typeof openCoinInfo === 'function') openCoinInfo(currentSymbol);
+}
+
+// ---- Header "add to watchlist" icon (writes into the same localStorage key
+// watchlist.html and the Scanner tab use, so a coin added here shows up
+// there too). ----
+const TA_WATCHLIST_KEY = 'crypto-watchlist-custom-coins';
+const TA_WATCHLIST_DEFAULTS = new Set(['BTCUSDT','ETHUSDT']);
+function taLoadWatchlist(){
+  try{ const raw = localStorage.getItem(TA_WATCHLIST_KEY); const list = raw ? JSON.parse(raw) : []; return Array.isArray(list) ? list : []; }
+  catch(e){ return []; }
+}
+function taIsInWatchlist(sym){ return TA_WATCHLIST_DEFAULTS.has(sym) || taLoadWatchlist().some(c => c && c.binanceSymbol === sym); }
+function taGradientFor(sym){
+  let hash = 0;
+  for(let i = 0; i < sym.length; i++) hash = (hash * 31 + sym.charCodeAt(i)) >>> 0;
+  const palette = ['#35e0c0','#8ea9ff','#ff8a4c','#a78bfa','#f5a623','#ff5470','#5b8cff','#f0c24b'];
+  return `linear-gradient(135deg,${palette[hash % palette.length]},#1c8f79)`;
+}
+function updateWatchlistBtn(){
+  const btn = el('taWatchlistBtn');
+  if(!btn || !currentSymbol) return;
+  const already = taIsInWatchlist(currentSymbol);
+  btn.classList.toggle('added', already);
+  btn.disabled = already;
+  btn.title = already ? 'Already on your watchlist' : 'Add to watchlist';
+  btn.setAttribute('aria-label', btn.title);
+}
+function addToWatchlist(btn){
+  if(!currentSymbol || taIsInWatchlist(currentSymbol)) return;
+  const base = currentSymbol.replace(/USDT$/i,'');
+  const list = taLoadWatchlist();
+  list.push({ symbol:base, binanceSymbol:currentSymbol, name:base, coingeckoId:null, gradient:taGradientFor(currentSymbol), addedAt:Date.now() });
+  try{ localStorage.setItem(TA_WATCHLIST_KEY, JSON.stringify(list)); }catch(e){ return; }
+  updateWatchlistBtn();
+}
+
+// ---- Header "analysis" icon — opens this page's own analysis modal (the same one Coin Search and the
+// Cloud Breakout results open) for the coin the breakdown is showing, layered directly above the breakdown.
+// Reuses searchAndAnalyze() so the coin is screened on Binance first, Bybit as fallback, exactly like a search. ----
+function taCoinAnalysisOpen(){ const m = document.getElementById('analysisModal'); return !!(m && m.classList.contains('open')); }
+async function showAnalysis(){
+  if(!currentSymbol) return;
+  const sym = currentSymbol, btn = el('taAnalysisBtn');
+  if(btn) btn.disabled = true;
+  try{ await searchAndAnalyze(sym); }
+  finally{ if(btn) btn.disabled = false; }
+  if(!taCoinAnalysisOpen()){
+    // searchAndAnalyze reports failures in the Cloud Breakout tab's error box, which is hidden behind this overlay.
+    const msg = `Couldn't open the analysis for ${sym}.`;
+    const prevText = el('taStatusText').textContent, row = el('taStatusRow');
+    const prevCls = ['is-loading','is-ok','is-error'].filter(c => row.classList.contains(c))[0] || '';
+    setStatus(msg, 'error');
+    setTimeout(() => { if(el('taStatusText').textContent === msg) setStatus(prevText, prevCls.replace('is-','')); }, 4000);
+  }
+}
 
 function el(id){ return document.getElementById(id); }
 function esc(s){ return String(s).replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch])); }
@@ -8400,6 +8501,8 @@ async function load(symbol, tf){
   currentSource = source;
   el('taSource').textContent = source==='Bybit' ? 'Bybit USDT Perp' : 'Binance USDT-M Perp';
   el('taSource').className = 'analysis-source ' + (source==='Bybit' ? 'src-bybit' : 'src-binance');
+  el('taChartLink').href = tvChartUrl(symbol, tf, source);
+  updateWatchlistBtn();
 
   const price = ticker && Number.isFinite(ticker.lastPrice) ? ticker.lastPrice : candles[candles.length-1].close;
   PDEC = decimalsFor(price);
@@ -8458,6 +8561,7 @@ function openFor(symbol, tfWanted){
     document.querySelectorAll('#taTfToggle button').forEach(b=>b.classList.toggle('active', b.dataset.tf==='1d'));
   }
   el('analysisOverlay').classList.add('open');
+  document.body.classList.add('ta-open');
   document.body.style.overflow = 'hidden';
   // Push a history entry so a real Back (hardware button, swipe-back gesture,
   // or an installed PWA's own Back) closes this overlay and returns to the
@@ -8473,6 +8577,7 @@ function openFor(symbol, tfWanted){
 function close(){
   loadToken++;
   el('analysisOverlay').classList.remove('open');
+  document.body.classList.remove('ta-open');
   document.body.style.overflow = '';
   // Collapse the entry pushed in openFor() back onto the underlying page
   // state. A no-op when this runs as a result of an actual popstate, since
@@ -8568,7 +8673,10 @@ document.addEventListener('DOMContentLoaded', ()=>{
     if(e.target.id==='analysisOverlay') close();
   });
   document.addEventListener('keydown', e=>{
-    if(e.key==='Escape' && el('analysisOverlay').classList.contains('open')) close();
+    if(e.key==='Escape' && el('analysisOverlay').classList.contains('open')){
+      if(taCoinAnalysisOpen()){ window.closeAnalysis(); return; }  // the analysis modal sits on top - close it first
+      close();
+    }
   });
 });
 
@@ -8582,7 +8690,12 @@ document.addEventListener('DOMContentLoaded', ()=>{
 // fires popstate on this window when it's traversed. A no-op for any other
 // popstate (screener.html has no other page/overlay history state).
 window.addEventListener('popstate', () => {
-  if(el('analysisOverlay') && el('analysisOverlay').classList.contains('open')) close();
+  if(el('analysisOverlay') && el('analysisOverlay').classList.contains('open')){
+    // Back with the analysis modal showing above the breakdown: close just the modal and restore the
+    // history entry this Back consumed, since the breakdown underneath is still open.
+    if(taCoinAnalysisOpen()){ window.closeAnalysis(); history.pushState({ analysis: true }, '', location.href); return; }
+    close();
+  }
 });
 
 // Cordova-style back-button plugin (DOM CustomEvent) and Capacitor's own
@@ -8594,16 +8707,18 @@ window.addEventListener('popstate', () => {
 document.addEventListener('backbutton', event => {
   if(el('analysisOverlay') && el('analysisOverlay').classList.contains('open')){
     event.preventDefault();
-    close();
+    if(taCoinAnalysisOpen()) window.closeAnalysis(); else close();
   }
 }, { passive: false });
 if(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App && typeof window.Capacitor.Plugins.App.addListener === 'function'){
   window.Capacitor.Plugins.App.addListener('backButton', () => {
-    if(el('analysisOverlay') && el('analysisOverlay').classList.contains('open')) close();
+    if(el('analysisOverlay') && el('analysisOverlay').classList.contains('open')){
+      if(taCoinAnalysisOpen()) window.closeAnalysis(); else close();
+    }
   });
 }
 
-window.TechAnalysis = { open, openSymbol, close, setTf, refresh, copyValues, clearAllChecks, toggleAll: toggleAllGroups, GROUPS, _compute: computeValues };
+window.TechAnalysis = { open, openSymbol, close, setTf, refresh, copyValues, clearAllChecks, toggleAll: toggleAllGroups, addToWatchlist, showCoinInfo, showAnalysis, GROUPS, _compute: computeValues };
 })();
 </script>
 
