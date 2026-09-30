@@ -1,1 +1,27 @@
-
+name: fetch-kalshi
+on:
+  schedule: [{ cron: "*/15 * * * *" }]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch
+        run: |
+          mkdir -p data
+          for s in KXFED KXCPI KXRECSSNBER KXBTCD; do
+            curl -sf --retry 5 --retry-delay 15 --retry-all-errors \
+              -A "personal-dashboard/1.0" \
+              "https://external-api.kalshi.com/trade-api/v2/markets?series_ticker=$s&status=open&limit=200" \
+              -o "data/$s.json" || echo "failed $s"
+            sleep 5
+          done
+      - name: Commit
+        run: |
+          git config user.name "bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add data
+          git diff --cached --quiet || (git commit -m "update data" && git push)
