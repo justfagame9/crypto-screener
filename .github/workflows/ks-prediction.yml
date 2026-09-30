@@ -1,6 +1,6 @@
 name: fetch-kalshi
 on:
-  schedule: [{ cron: "*/15 * * * *" }]
+  schedule: [{ cron: "*/10 * * * *" }]
   workflow_dispatch:
 permissions:
   contents: write
