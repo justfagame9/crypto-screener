@@ -85,7 +85,7 @@ label.tg{display:flex;gap:6px;align-items:center;color:var(--mut);cursor:pointer
 if(/embed=1/.test(location.search))document.body.classList.add('embed');
 // Data is written to the repo-root data/ folder by the Action, which GitHub Pages (/docs) does not serve,
 // so read it from the raw GitHub URL. Works in the browser and inside the Android (Capacitor) app.
-const BASE=localStorage.getItem('prediction-markets-data-base')||'https://raw.githubusercontent.com/justfagame9/crypto-screener/main/data/';
+const BASE=localStorage.getItem('prediction-markets-data-base')||'https://raw.githubusercontent.com/justgame7/TradeSphere/main/data/';
 const SNAP='prediction-markets-snapshots';
 // Add a series here AND in the GitHub Action list. Missing data files just show "no data".
 const SERIES=[
