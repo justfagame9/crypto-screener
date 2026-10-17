@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Meridian — Portfolio Manager</title>
 <meta name="theme-color" content="#14121F">
@@ -714,14 +715,14 @@ a{color:inherit;}
   </header>
 
   <nav class="tabs" role="tablist">
-    <button class="tab active" data-tab="crypto"><span class="dot" style="background:var(--violet)"></span>Crypto</button>
-    <button class="tab" data-tab="overview">Overview</button>
+    <button class="tab" data-tab="crypto"><span class="dot" style="background:var(--violet)"></span>Crypto</button>
+    <button class="tab active" data-tab="overview">Overview</button>
     <button class="tab" data-tab="stocksIN"><span class="dot" style="background:var(--saffron)"></span>IN Stocks</button>
     <button class="tab" data-tab="stocksUS"><span class="dot" style="background:var(--azure)"></span>US Stocks</button>
   </nav>
 
   <!-- ======================= OVERVIEW ======================= -->
-  <section class="view" id="view-overview">
+  <section class="view active" id="view-overview">
     <div class="bento">
       <div class="card hero-card full">
         <div class="hero-top">
@@ -810,7 +811,7 @@ a{color:inherit;}
   </section>
 
   <!-- ======================= CRYPTO ======================= -->
-  <section class="view active" id="view-crypto">
+  <section class="view" id="view-crypto">
     <div class="stat-strip" id="cryptoStats"></div>
     <div class="holdings-list" id="cryptoHoldings"></div>
     <div class="card wallet-card">
@@ -1143,6 +1144,60 @@ function mergeMarkets(base, parsed){
   return out;
 }
 
+// Backup files are untrusted input: a shared/edited JSON could carry markup in
+// symbol/name/id fields that later lands in innerHTML or data-* attributes.
+// Imported records are rebuilt from a whitelist - identifiers must match a
+// strict pattern (record dropped otherwise), free text has angle brackets
+// removed, everything numeric is coerced to a finite number.
+const IMPORT_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const IMPORT_SYMBOL_RE = /^[A-Za-z0-9._&:^=-]{1,40}$/;
+function importNum(v, fallback){
+  const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v;
+  return (typeof n === 'number' && isFinite(n)) ? n : fallback;
+}
+function importText(v, max){
+  return String(v == null ? '' : v).replace(/[<>\u0000-\u001f]/g, '').slice(0, max || 120);
+}
+function importExtras(src, dst, skip){
+  Object.keys(src).forEach(k=>{
+    if(skip.indexOf(k) !== -1 || k === '__proto__' || k === 'constructor' || k === 'prototype') return;
+    const v = src[k];
+    if(typeof v === 'boolean') dst[k] = v;
+    else if(typeof v === 'number' && isFinite(v)) dst[k] = v;
+  });
+}
+function sanitizeImportedLot(l){
+  if(!l || typeof l !== 'object' || !IMPORT_ID_RE.test(String(l.id))) return null;
+  const out = { id:String(l.id), qty:importNum(l.qty, 0), price:importNum(l.price, 0), date:importNum(l.date, Date.now()), fee:importNum(l.fee, 0) };
+  if(l.feeType === 'maker' || l.feeType === 'taker') out.feeType = l.feeType;
+  importExtras(l, out, ['id','qty','price','date','fee','feeType']);
+  return out;
+}
+function sanitizeImportedHolding(h){
+  if(!h || typeof h !== 'object' || !IMPORT_ID_RE.test(String(h.id)) || !IMPORT_SYMBOL_RE.test(String(h.symbol))) return null;
+  const out = {
+    id:String(h.id), symbol:String(h.symbol), name:importText(h.name),
+    side: h.side === 'short' ? 'short' : 'long',
+    lots:(Array.isArray(h.lots) ? h.lots : []).map(sanitizeImportedLot).filter(Boolean),
+    soldQty:importNum(h.soldQty, 0),
+    currentPrice:importNum(h.currentPrice, null), change24h:importNum(h.change24h, null),
+    priceUpdated:importNum(h.priceUpdated, null), targetPrice:importNum(h.targetPrice, null)
+  };
+  importExtras(h, out, ['id','symbol','name','side','lots','soldQty','currentPrice','change24h','priceUpdated','targetPrice']);
+  return out;
+}
+function sanitizeImportedRealized(r){
+  if(!r || typeof r !== 'object' || !IMPORT_ID_RE.test(String(r.id)) || !IMPORT_SYMBOL_RE.test(String(r.symbol))) return null;
+  const out = {
+    id:String(r.id), symbol:String(r.symbol), side: r.side === 'short' ? 'short' : 'long',
+    qty:importNum(r.qty, 0), avgCost:importNum(r.avgCost, 0), sellPrice:importNum(r.sellPrice, 0),
+    pnl:importNum(r.pnl, 0), fee:importNum(r.fee, 0), date:importNum(r.date, Date.now())
+  };
+  if(r.tradeId != null && IMPORT_ID_RE.test(String(r.tradeId))) out.tradeId = String(r.tradeId);
+  importExtras(r, out, ['id','symbol','side','qty','avgCost','sellPrice','pnl','fee','date','tradeId']);
+  return out;
+}
+
 // Used specifically by "Import backup": adds a backup file's positions and
 // closed trades ON TOP of what's already on this device, instead of wiping
 // it. Every holding and realized trade carries a unique `id` from uid(), so
@@ -1161,12 +1216,12 @@ function mergeImportedMarkets(base, parsed){
     const merged = Object.assign({}, b);
 
     const localHoldingIds = new Set((b.holdings||[]).map(h=>h.id));
-    const newHoldings = (p.holdings||[]).filter(h=>h && h.id && !localHoldingIds.has(h.id));
+    const newHoldings = (Array.isArray(p.holdings) ? p.holdings : []).map(sanitizeImportedHolding).filter(h=>h && !localHoldingIds.has(h.id));
     merged.holdings = (b.holdings||[]).concat(newHoldings);
     addedHoldings += newHoldings.length;
 
     const localRealizedIds = new Set((b.realized||[]).map(r=>r.id));
-    const newRealized = (p.realized||[]).filter(r=>r && r.id && !localRealizedIds.has(r.id));
+    const newRealized = (Array.isArray(p.realized) ? p.realized : []).map(sanitizeImportedRealized).filter(r=>r && !localRealizedIds.has(r.id));
     merged.realized = (b.realized||[]).concat(newRealized);
     addedRealized += newRealized.length;
 
@@ -1460,8 +1515,8 @@ function applyTabVisibility(){
   if(activeHidden){
     tabs.forEach(x=>x.classList.remove('active'));
     document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
-    document.querySelector('.tab[data-tab="crypto"]').classList.add('active');
-    document.getElementById('view-crypto').classList.add('active');
+    document.querySelector('.tab[data-tab="overview"]').classList.add('active');
+    document.getElementById('view-overview').classList.add('active');
   }
 }
 
@@ -2024,10 +2079,81 @@ function insDetailedRows(){
   Object.keys(MARKET_META).forEach(k=>{
     (state.markets[k].realized || []).forEach(r=>{
       if(!r.date) return;
-      rows.push({ date:r.date, pnl: toDisplay(r.pnl || 0, k), symbol: r.symbol });
+      rows.push({
+        date:r.date, pnl: toDisplay(r.pnl || 0, k), symbol: r.symbol, market:k,
+        side: r.side === 'short' ? 'short' : 'long',
+        qty: r.qty || 0, avgCost: r.avgCost || 0,
+        tradeId: r.tradeId || null, opened: r.opened || null, entries: r.entries || null,
+        // capital this exit put to work, in display currency (0 when the import had no qty/avg)
+        cost: toDisplay((r.qty || 0) * (r.avgCost || 0), k)
+      });
     });
   });
   return rows.sort((a,b)=>a.date-b.date);
+}
+
+// ---- Whole-trade grouping -------------------------------------------------
+// Every sell/cover is stored as its own "exit" row, so a position built with
+// 3 buys and closed in 2 sells is 2 rows. A *trade* is the whole cycle:
+// flat → entries (averaged) → exits → flat again. Win/loss is judged on the
+// combined P&L of that cycle, so scaling out of a loser with a small early
+// profit no longer counts as a "win".
+//
+// Exact link: rows booked after this feature carry the `tradeId` of the
+// holding they were closed from. Older rows have no id, so they are inferred:
+// consecutive exits of the same market+symbol+side that share the same average
+// entry cost (the average only moves when you add to the position) and sit
+// within INS_GAP_DAYS of each other are one trade. Rows with no qty/avg cost
+// (exchange P&L imports) can't be linked and stay one-exit-one-trade.
+const INS_GAP_DAYS = 30;
+const INS_BURST_MIN = 10;
+function insGroupTrades(allRows){
+  const groups = [];
+  const byId = new Map();
+  const cur = new Map();     // legacy bucket → its latest open cluster
+  allRows.forEach(r=>{
+    let g;
+    if(r.tradeId){
+      const k = r.market + ':' + r.tradeId;
+      g = byId.get(k);
+      if(!g){ g = { exact:true, market:r.market, symbol:r.symbol, side:r.side, tradeId:r.tradeId, fills:[] }; byId.set(k, g); groups.push(g); }
+    }else if(r.qty > 0 && r.avgCost > 0){
+      const bk = r.market + '|' + r.symbol + '|' + r.side;
+      g = cur.get(bk);
+      const last = g && g.fills[g.fills.length-1];
+      const same = last && Math.abs(last.avgCost - r.avgCost) <= Math.max(last.avgCost, r.avgCost) * 1e-6
+        && (r.date - last.date) <= INS_GAP_DAYS * 864e5;
+      if(!same){ g = { exact:false, market:r.market, symbol:r.symbol, side:r.side, tradeId:null, fills:[] }; cur.set(bk, g); groups.push(g); }
+    }else{
+      // No qty / entry price (exchange P&L imports): the only signal left is
+      // timing. Exits of one coin+side that land within INS_BURST_MIN minutes
+      // of each other are the fills of one order / one scale-out burst.
+      const bk = 'u|' + r.market + '|' + r.symbol + '|' + r.side;
+      g = cur.get(bk);
+      const last = g && g.fills[g.fills.length-1];
+      if(!(last && (r.date - last.date) <= INS_BURST_MIN * 60e3)){
+        g = { exact:false, timed:true, market:r.market, symbol:r.symbol, side:r.side, tradeId:null, fills:[] };
+        cur.set(bk, g); groups.push(g);
+      }
+    }
+    g.fills.push(r);
+  });
+  // Is the position still partly open? Then it's not a finished trade yet.
+  const openHold = new Map();
+  Object.keys(MARKET_META).forEach(k=>{
+    (state.markets[k].holdings || []).forEach(h=>{
+      openHold.set(k + ':' + h.id, h);
+      const bk = k + '|' + h.symbol + '|' + (h.side === 'short' ? 'short' : 'long');
+      if((h.soldQty || 0) > 0) openHold.set(bk, h);
+    });
+  });
+  groups.forEach(g=>{
+    if(g.exact) g.open = openHold.has(g.market + ':' + g.tradeId);
+    else g.open = false;
+  });
+  // Legacy: only the newest cluster of a symbol can still be the open one.
+  cur.forEach((g, bk)=>{ if(!g.timed && openHold.has(bk)) g.open = true; });
+  return groups;
 }
 
 // Longest run of consecutive trading days that are all wins (sign>0) or all
@@ -2059,28 +2185,64 @@ function insCurrentStreak(days){
 }
 
 function computeInsights(fyStart){
-  let rows = insDetailedRows();
+  const allRows = insDetailedRows();
+  let rows = allRows;
+  let bounds = null;
   if(fyStart !== 'all'){
-    const { start, end } = fyBounds(fyStart);
-    rows = rows.filter(r => r.date >= start && r.date < end);
+    bounds = fyBounds(fyStart);
+    rows = rows.filter(r => r.date >= bounds.start && r.date < bounds.end);
   }
   if(!rows.length) return null;
 
-  // ---- trades
-  const wins = rows.filter(r => r.pnl > INS_EPS), losses = rows.filter(r => r.pnl < -INS_EPS);
-  const grossProfit = wins.reduce((s,r)=>s+r.pnl, 0);
-  const grossLoss = Math.abs(losses.reduce((s,r)=>s+r.pnl, 0));
-  const net = grossProfit - grossLoss;
-  const n = rows.length;
+  // ---- exits (individual sell/cover fills) — kept for the P&L-by-day maths
+  const fillWins = rows.filter(r => r.pnl > INS_EPS).length;
+  const net = rows.reduce((s,r)=>s+r.pnl, 0);
+
+  // ---- whole trades: group ALL exits first, then keep the part booked in the period
+  const inPeriod = r => !bounds || (r.date >= bounds.start && r.date < bounds.end);
+  const trades = [];
+  insGroupTrades(allRows).forEach(g=>{
+    const f = g.fills.filter(inPeriod);
+    if(!f.length) return;
+    const pnl = f.reduce((s,r)=>s+r.pnl, 0);
+    const lastExit = f[f.length-1].date;
+    const openedTs = g.fills.reduce((m,r)=> r.opened && (!m || r.opened < m) ? r.opened : m, 0) || null;
+    trades.push({
+      symbol:g.symbol, side:g.side, market:g.market, open:g.open, exact:g.exact,
+      pnl, exits:f.length, cost:f.reduce((s,r)=>s+r.cost, 0), date:lastExit,
+      entries: g.fills.reduce((m,r)=> Math.max(m, r.entries || 0), 0) || null,
+      heldDays: openedTs ? Math.max(0, (lastExit - openedTs) / 864e5) : null
+    });
+  });
+  const done = trades.filter(x => !x.open);
+  const openBooked = trades.filter(x => x.open);
+  const wins = done.filter(x => x.pnl > INS_EPS), losses = done.filter(x => x.pnl < -INS_EPS);
+  const grossProfit = wins.reduce((s,x)=>s+x.pnl, 0);
+  const grossLoss = Math.abs(losses.reduce((s,x)=>s+x.pnl, 0));
+  const n = done.length;
   const avgWin = wins.length ? grossProfit / wins.length : 0;
   const avgLoss = losses.length ? grossLoss / losses.length : 0;
+  const closedNet = grossProfit - grossLoss;
+  // Capital-weighted: share of deployed capital that sat in winning trades.
+  const sized = done.filter(x => x.cost > INS_EPS);
+  const capTotal = sized.reduce((s,x)=>s+x.cost, 0);
+  const capWon = sized.filter(x => x.pnl > INS_EPS).reduce((s,x)=>s+x.cost, 0);
+  const held = done.filter(x => x.heldDays != null);
   const t = {
-    n, net, grossProfit, grossLoss, avgWin, avgLoss,
+    n, net, closedNet, grossProfit, grossLoss, avgWin, avgLoss,
     wins: wins.length, losses: losses.length, flat: n - wins.length - losses.length,
-    winRate: wins.length / n * 100,
+    winRate: n ? wins.length / n * 100 : null,
+    exits: rows.length, fillWins, fillWinRate: fillWins / rows.length * 100,
+    capWinRate: capTotal > INS_EPS ? capWon / capTotal * 100 : null,
+    avgExits: n ? done.reduce((s,x)=>s+x.exits, 0) / n : 0,
+    scaled: done.filter(x => x.exits > 1).length,
+    avgHeld: held.length ? held.reduce((s,x)=>s+x.heldDays, 0) / held.length : null,
+    openCount: openBooked.length,
+    openBooked: openBooked.reduce((s,x)=>s+x.pnl, 0),
+    inferred: done.filter(x => !x.exact && x.exits > 1).length,
     profitFactor: grossLoss > INS_EPS ? grossProfit / grossLoss : (grossProfit > INS_EPS ? Infinity : 0),
     payoff: avgLoss > INS_EPS ? avgWin / avgLoss : (avgWin > INS_EPS ? Infinity : 0),
-    expectancy: net / n,
+    expectancy: n ? closedNet / n : 0,
     bestTrade: wins.length ? wins.reduce((a,b)=> b.pnl > a.pnl ? b : a) : null,
     worstTrade: losses.length ? losses.reduce((a,b)=> b.pnl < a.pnl ? b : a) : null
   };
@@ -2137,7 +2299,9 @@ function computeInsights(fyStart){
 }
 
 function insWeekdaySVG(wk, prefix, w){
-  const h = 132, padT = 18, padB = 22, padX = 6;
+  // padB leaves room for a negative bar's value label to sit under the bar
+  // without running into the weekday names on the bottom row.
+  const h = 150, padT = 18, padB = 40, padX = 6;
   const plotH = h - padT - padB;
   const maxAbs = Math.max(1e-9, ...wk.map(x => Math.abs(x.pnl)));
   const hasNeg = wk.some(x => x.pnl < -INS_EPS), hasPos = wk.some(x => x.pnl > INS_EPS);
@@ -2177,18 +2341,22 @@ function drawInsights(fyStart, metaEl, areaEl, prefix){
   }
   const { t, d, risk, wk, top, bottom } = ins;
   const first = d.list[0].ts, last = d.list[d.list.length-1].ts;
-  metaEl.textContent = `${t.n} closed trade${t.n===1?'':'s'} · ${d.count} trading day${d.count===1?'':'s'} · ${insDate(first)} – ${insDate(last)} · ${label}`;
+  metaEl.textContent = `${t.n} closed trade${t.n===1?'':'s'}${t.exits !== t.n ? ` · ${t.exits} exit${t.exits===1?'':'s'}` : ''} · ${d.count} trading day${d.count===1?'':'s'} · ${insDate(first)} – ${insDate(last)} · ${label}`;
 
   const pfTxt = t.profitFactor === Infinity ? '∞' : t.profitFactor.toFixed(2);
   const pfBadge = t.grossLoss <= INS_EPS ? '' : (t.profitFactor >= 1.5 ? '<span class="ins-badge good">Strong</span>' : (t.profitFactor >= 1 ? '<span class="ins-badge mid">Edge</span>' : '<span class="ins-badge bad">Losing</span>'));
-  const wrCls = t.winRate >= 50 ? 'pnl-pos' : 'pnl-neg';
+  const pct = v => v == null ? '—' : v.toFixed(1) + '%';
+  const wrCls = t.winRate == null ? 'pnl-flat' : (t.winRate >= 50 ? 'pnl-pos' : 'pnl-neg');
+  const wrSub = t.n
+    ? `${t.wins} of ${t.n} whole trade${t.n===1?'':'s'}`
+    : 'No fully closed trade yet';
   const payoffTxt = t.payoff === Infinity ? '∞' : t.payoff.toFixed(2) + '×';
   const wPct = t.grossProfit + t.grossLoss > INS_EPS ? t.grossProfit / (t.grossProfit + t.grossLoss) * 100 : 50;
 
   const dayCard = (kind, day, titleTxt, emptyTxt) => day
     ? `<div class="ins-card ${kind}"><div class="ins-k">${titleTxt}</div>
          <div class="ins-v ${kind==='pos'?'pnl-pos':'pnl-neg'}">${insMoney(day.pnl, prefix)}</div>
-         <div class="ins-big-sub"><b>${insDate(day.ts)}</b><br>${day.trades} trade${day.trades===1?'':'s'} closed</div></div>`
+         <div class="ins-big-sub"><b>${insDate(day.ts)}</b><br>${day.trades} exit${day.trades===1?'':'s'} booked</div></div>`
     : `<div class="ins-card"><div class="ins-k">${titleTxt}</div><div class="ins-v pnl-flat">—</div><div class="ins-big-sub">${emptyTxt}</div></div>`;
 
   const streakCard = (kind, s, titleTxt, emptyTxt) => s
@@ -2210,7 +2378,7 @@ function drawInsights(fyStart, metaEl, areaEl, prefix){
     const cls = x.pnl > INS_EPS ? 'w' : (x.pnl < -INS_EPS ? 'l' : 'f');
     const op = cls === 'f' ? '' : ` style="opacity:${(0.4 + 0.6 * Math.abs(x.pnl)/maxAbs).toFixed(2)}"`;
     const hl = inWin(i) ? ' hl-w' : (inLoss(i) ? ' hl-l' : '');
-    const tip = `${insDate(x.ts)} · ${insMoney(x.pnl, prefix)} · ${x.trades} trade${x.trades===1?'':'s'}`;
+    const tip = `${insDate(x.ts)} · ${insMoney(x.pnl, prefix)} · ${x.trades} exit${x.trades===1?'':'s'}`;
     return `<i class="ins-cell ${cls}${hl}${dense?' dense':''}"${op} data-tip="${insEsc(tip)}" title="${insEsc(tip)}"></i>`;
   }).join('');
 
@@ -2225,7 +2393,7 @@ function drawInsights(fyStart, metaEl, areaEl, prefix){
 
   const kv = (k, v, cls) => `<div><div class="ins-k">${k}</div><div class="ins-v ${cls||''}">${v}</div></div>`;
   const kvHtml = [
-    kv('Trades', `${t.n} <span style="color:var(--text-faint);font-weight:400;font-size:11px">${t.wins}W · ${t.losses}L${t.flat?` · ${t.flat}F`:''}</span>`),
+    kv('Whole trades', `${t.n} <span style="color:var(--text-faint);font-weight:400;font-size:11px">${t.wins}W · ${t.losses}L${t.flat?` · ${t.flat}F`:''}</span>`),
     kv('Trading days', `${d.count} <span style="color:var(--text-faint);font-weight:400;font-size:11px">${d.green}G · ${d.red}R</span>`),
     kv('Avg win', t.wins ? insMoney(t.avgWin, prefix) : '—', t.wins ? 'pnl-pos' : 'pnl-flat'),
     kv('Avg loss', t.losses ? insMoney(-t.avgLoss, prefix) : '—', t.losses ? 'pnl-neg' : 'pnl-flat'),
@@ -2248,14 +2416,28 @@ function drawInsights(fyStart, metaEl, areaEl, prefix){
     ? list.map(c=>`<div class="ins-coin-row"><span>${insEsc(c.sym)}</span><span class="${cls}">${insMoney(c.pnl, prefix)}</span></div>`).join('')
     : `<div class="ins-coin-row"><span style="color:var(--text-faint);font-weight:400">None</span></div>`;
 
+  // Win rate three ways: the whole-trade headline, how much capital sat in winners,
+  // and the old per-exit view (what it would read if every partial close counted).
+  const lensHtml = [
+    kv('By whole trade', pct(t.winRate), t.winRate == null ? 'pnl-flat' : (t.winRate >= 50 ? 'pnl-pos' : 'pnl-neg')),
+    kv('By capital', pct(t.capWinRate), t.capWinRate == null ? 'pnl-flat' : (t.capWinRate >= 50 ? 'pnl-pos' : 'pnl-neg')),
+    kv('By exit (old view)', `${pct(t.fillWinRate)} <span style="color:var(--text-faint);font-weight:400;font-size:11px">${t.fillWins}/${t.exits}</span>`),
+    kv('Exits per trade', t.n ? t.avgExits.toFixed(1) + '×' : '—', ''),
+    kv('Scaled-out trades', t.n ? `${t.scaled} <span style="color:var(--text-faint);font-weight:400;font-size:11px">of ${t.n}</span>` : '—'),
+    kv('Avg hold', t.avgHeld == null ? '—' : (t.avgHeld < 1 ? Math.max(1, Math.round(t.avgHeld * 24)) + 'h' : t.avgHeld.toFixed(1) + 'd'))
+  ].join('');
+  const openNote = t.openCount
+    ? `<div class="ins-note">${t.openCount} position${t.openCount===1?' is':'s are'} still open with partial exits booked (${insMoney(t.openBooked, prefix)}). They join the win rate once fully closed.</div>`
+    : '';
+
   const caution = t.n < 30
-    ? `<div class="ins-warn">Only ${t.n} closed trade${t.n===1?'':'s'} in this period. Ratios like profit factor and payoff swing a lot on small samples (30+ trades is where they start to settle), so read them as indicative.</div>`
+    ? `<div class="ins-warn">Only ${t.n} fully closed trade${t.n===1?'':'s'} in this period. Ratios like profit factor and payoff swing a lot on small samples (30+ trades is where they start to settle), so read them as indicative.</div>`
     : '';
 
   areaEl.innerHTML = `<div class="ins">
     ${caution}
     <div class="ins-hero">
-      <div class="ins-tile"><div class="ins-k">Win rate</div><div class="ins-v ${wrCls}">${t.winRate.toFixed(1)}%</div><div class="ins-s">${t.wins} of ${t.n} trades</div></div>
+      <div class="ins-tile"><div class="ins-k">Win rate</div><div class="ins-v ${wrCls}">${pct(t.winRate)}</div><div class="ins-s">${wrSub}</div></div>
       <div class="ins-tile"><div class="ins-k">Profit factor</div><div class="ins-v">${pfTxt}</div><div class="ins-s">${pfBadge || 'No losing trades'}</div></div>
       <div class="ins-tile"><div class="ins-k">Expectancy</div><div class="ins-v ${pnlClass(t.expectancy)}">${insMoney(t.expectancy, prefix)}</div><div class="ins-s">avg per trade</div></div>
     </div>
@@ -2263,6 +2445,10 @@ function drawInsights(fyStart, metaEl, areaEl, prefix){
       <div class="ins-split-bar"><i class="w" style="width:${wPct.toFixed(1)}%"></i><i class="l" style="width:${(100-wPct).toFixed(1)}%"></i></div>
       <div class="ins-split-lbl"><span class="pnl-pos">Gross profit ${fmtMoney(t.grossProfit, prefix)}</span><span class="pnl-neg">Gross loss ${t.grossLoss > INS_EPS ? '-' : ''}${fmtMoney(t.grossLoss, prefix)}</span></div>
     </div>
+
+    <div class="ins-sec">Win rate, three ways</div>
+    <div class="ins-kv">${lensHtml}</div>
+    ${openNote}
 
     <div class="ins-sec">Best &amp; worst day</div>
     <div class="ins-pair">
@@ -2302,7 +2488,7 @@ function drawInsights(fyStart, metaEl, areaEl, prefix){
       <div class="ins-coin-col"><div class="ins-k">Biggest drags</div>${coinRows(bottom, 'pnl-neg')}</div>
     </div>
 
-    <div class="ins-note">A day is the sum of all trades closed that calendar day. Streaks count consecutive trading days only (idle days don't break them). Profit factor = gross profit ÷ gross loss. Payoff = avg win ÷ avg loss. Drawdown is measured on realized P&amp;L only, so open positions aren't included.</div>
+    <div class="ins-note">A <b>trade</b> is the whole cycle of one coin: every entry (averaged) and every partial exit, from flat to flat, judged on its combined P&amp;L &mdash; so 3 buys sold in 2 pieces is one trade, a win only if the total is positive. Newly booked exits are linked exactly; older exits are matched by coin, side and average entry, or &mdash; when the import has no entry price &mdash; by exits of the same coin landing within ${INS_BURST_MIN} minutes${t.inferred ? ` (${t.inferred} trade${t.inferred===1?'':'s'} here inferred this way)` : ''}. Profit factor, payoff, expectancy and largest win/loss are per whole trade. By capital weights each trade by the cost of its exits. A day is the sum of all exits booked that calendar day. Streaks count consecutive trading days only (idle days don't break them). Profit factor = gross profit ÷ gross loss. Payoff = avg win ÷ avg loss. Drawdown is measured on realized P&amp;L only, so open positions aren't included.</div>
   </div>`;
   return t.net;
 }
@@ -3266,9 +3452,9 @@ function openAddModal(market, prefillSymbol){
           dropdown.innerHTML = `<div class="search-empty">No matching USDT-M perpetual on Binance</div>`;
         }else{
           dropdown.innerHTML = results.map(r=>`
-            <div class="search-item" data-symbol="${r.symbol}" data-price="${r.price!=null?r.price:''}">
-              <div class="avatar" style="width:28px;height:28px;font-size:10px;${avatarStyle(r.symbol)}">${initials(r.symbol.slice(0,-4))}</div>
-              <div class="si-name">${r.symbol.slice(0,-4)}<small>${r.symbol}</small></div>
+            <div class="search-item" data-symbol="${escapeHtml(r.symbol)}" data-price="${r.price!=null?escapeHtml(r.price):''}">
+              <div class="avatar" style="width:28px;height:28px;font-size:10px;${avatarStyle(r.symbol)}">${escapeHtml(initials(r.symbol.slice(0,-4)))}</div>
+              <div class="si-name">${escapeHtml(r.symbol.slice(0,-4))}<small>${escapeHtml(r.symbol)}</small></div>
               <div class="si-price">${r.price!=null ? '$'+(parseFloat(r.price)<1?parseFloat(r.price).toFixed(6):parseFloat(r.price).toFixed(2)) : ''}</div>
             </div>`).join('');
         }
@@ -3665,7 +3851,11 @@ function openReduceModal(market, holdingId, closeOnly){
     const gross = c.side==='short' ? q*(c.avgCost-p) : q*(p-c.avgCost);
     const net = gross - fee;
     h.soldQty = (h.soldQty||0) + q;
-    state.markets[market].realized.push({ id:uid(), symbol:h.symbol, side:c.side, qty:q, avgCost:c.avgCost, sellPrice:p, pnl:net, fee, date:Date.now() });
+    // tradeId ties every exit of this position together so Insights can score
+    // the whole trade (all entries + all exits) instead of each partial close.
+    // `opened` = first entry date, `entries` = how many buys built the position.
+    const openedTs = h.lots.reduce((m,l)=> l.date && (m === 0 || l.date < m) ? l.date : m, 0);
+    state.markets[market].realized.push({ id:uid(), symbol:h.symbol, side:c.side, qty:q, avgCost:c.avgCost, sellPrice:p, pnl:net, fee, date:Date.now(), tradeId:h.id, entries:h.lots.length, opened:openedTs || Date.now() });
     if(state.markets[market].cashBalance !== undefined){
       state.markets[market].cashBalance += net;
     }
